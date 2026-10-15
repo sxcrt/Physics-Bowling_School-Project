@@ -1,0 +1,12 @@
+# Hells Balls — Python dependencies
+# Milestone 1 only needs Ursina (which pulls in Panda3D and Pillow).
+ursina==8.3.0
+Pillow>=10.0.0
+
+# Milestone 4 — webcam body tracking. Verified on Python 3.14.7 (Windows).
+# mediapipe 1.1.0 ships the Tasks API (PoseLandmarker); the legacy
+# mediapipe.solutions API no longer exists, so tracking/ uses Tasks.
+# mediapipe itself pulls in opencv-contrib-python (which provides cv2),
+# numpy, absl-py, flatbuffers, matplotlib and sounddevice.
+mediapipe==1.1.0
+opencv-contrib-python==5.0.0.93

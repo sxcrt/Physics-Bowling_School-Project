@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hells Balls — 3D Physics Bowling</title>
+<meta name="description" content="Hells Balls is a motion-controlled 3D physics bowling game. Download and run it on your desktop.">
+<style>
+  :root {
+    --bg: #0c0e2c;
+    --bg-2: #14163e;
+    --panel: #1c1e46;
+    --ink: #f0f0f8;
+    --muted: #a8aad0;
+    --pink: #ff3e8a;
+    --cyan: #96eeff;
+    --amber: #ffc94d;
+    --violet: #221e52;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #262a66 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+    min-height: 100vh;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 20px 80px; }
+  header { text-align: center; padding: 24px 0 8px; }
+  .eyebrow {
+    letter-spacing: .35em; text-transform: uppercase; font-size: .78rem;
+    color: var(--cyan); margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(2.4rem, 8vw, 4rem);
+    margin: 0; font-weight: 900; letter-spacing: .02em;
+    background: linear-gradient(180deg, #fff 20%, var(--cyan) 90%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 32px rgba(150, 238, 255, .25);
+  }
+  .tagline { color: var(--muted); margin: 12px auto 0; max-width: 560px; }
+  .notice {
+    margin: 28px auto 0; max-width: 640px; text-align: left;
+    background: rgba(255, 62, 138, .08);
+    border: 1px solid rgba(255, 62, 138, .35);
+    border-radius: 12px; padding: 16px 18px; font-size: .95rem; color: #ffd3e6;
+  }
+  .notice strong { color: var(--pink); }
+  .actions { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 30px; }
+  .btn {
+    display: inline-block; padding: 14px 26px; border-radius: 10px;
+    font-weight: 700; text-decoration: none; font-size: 1rem; transition: transform .08s ease, filter .08s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: linear-gradient(180deg, var(--pink), #d61f6b); color: #fff; box-shadow: 0 6px 24px rgba(255,62,138,.35); }
+  .btn-secondary { background: rgba(150,238,255,.12); color: var(--cyan); border: 1px solid rgba(150,238,255,.4); }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-secondary:hover { filter: brightness(1.12); }
+
+  section { margin-top: 46px; }
+  h2 { font-size: 1.35rem; color: var(--cyan); margin: 0 0 12px; letter-spacing: .01em; }
+  .panel {
+    background: var(--panel); border: 1px solid #2c2e5c; border-radius: 14px;
+    padding: 20px 22px; box-shadow: 0 10px 40px rgba(0,0,0,.35);
+  }
+  pre {
+    background: #0a0b20; border: 1px solid #2c2e5c; border-radius: 10px;
+    padding: 14px 16px; overflow-x: auto; font-size: .9rem;
+  }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 12px; }
+  .chip { background: rgba(150,238,255,.06); border: 1px solid #2c2e5c; border-radius: 10px; padding: 14px 16px; }
+  .chip b { color: var(--amber); }
+  .chip span { display: block; color: var(--muted); font-size: .9rem; margin-top: 4px; }
+  .kbd {
+    display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: .85em;
+    background: #0a0b20; border: 1px solid #3a3c6a; color: var(--cyan); font-family: ui-monospace, Consolas, monospace;
+  }
+  footer { margin-top: 60px; text-align: center; color: var(--muted); font-size: .85rem; }
+  footer a { color: var(--cyan); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Hells Balls</p>
+    <h1>Hells Balls</h1>
+    <p class="tagline">A motion-controlled 3D physics bowling game — real rigid-body simulation, USBC scoring, six game modes, and webcam swing tracking.</p>
+    <div class="notice">
+      <strong>This is a native desktop game, not a web app.</strong>
+      It runs on your own computer via <code>python main.py</code>. It cannot run
+      in a web browser (Panda3D needs an OpenGL window, and the webcam stack has
+      no browser build), so this page is a download &amp; launch hub, not the game itself.
+    </div>
+    <div class="actions">
+      <a class="btn btn-primary" href="#run">▶ Run from source</a>
+      <a class="btn btn-secondary" href="https://github.com/YOUR_USERNAME/YOUR_REPO/releases" target="_blank" rel="noopener">Download build</a>
+    </div>
+  </header>
+
+  <section id="run">
+    <h2>Run it</h2>
+    <div class="panel">
+      <p>Requires Python 3.12–3.14 on a desktop machine with OpenGL (a webcam is optional, for webcam mode).</p>
+      <pre><code>git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
+cd YOUR_REPO
+pip install -r requirements.txt
+python main.py</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Controls</h2>
+    <div class="grid">
+      <div class="chip"><b>Mouse (default)</b><span>Aim with the pointer, <span class="kbd">A</span>/<span class="kbd">D</span> to slide, drag-and-release to throw, sideways drag for hook.</span></div>
+      <div class="chip"><b>Webcam</b><span><span class="kbd">TAB</span> to toggle (or <span class="kbd">1</span>/<span class="kbd">2</span>), <span class="kbd">C</span> to switch throwing arm.</span></div>
+      <div class="chip"><b>Menus</b><span>Mouse, or arrow keys + <span class="kbd">ENTER</span> (<span class="kbd">ESC</span> backs out).</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Features</h2>
+    <div class="grid">
+      <div class="chip"><b>Real physics</b><span>Ball skid/roll/hook, toppling + sliding pins, collisions with restitution, kickbacks — all simulated, never scripted.</span></div>
+      <div class="chip"><b>Six modes</b><span>Classic Bowling, Physics Trivia, Equation Challenge, Player vs Bot, Local Multiplayer (2–4), BowlRush.</span></div>
+      <div class="chip"><b>Webcam tracking</b><span>MediaPipe pose → swing recognition drives a real throw.</span></div>
+      <div class="chip"><b>USBC scoring</b><span>Strikes, spares, and the tenth frame, up to a verified perfect 300.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why not in the browser?</h2>
+    <div class="panel">
+      <p>The game is built on <strong>Ursina / Panda3D</strong> (a native OpenGL engine)
+      with <strong>OpenCV + MediaPipe</strong> for webcam tracking. None of those have a
+      WebAssembly/browser runtime, so the game must run on a desktop machine. Making it
+      playable in a browser would require a cloud-streaming setup (running the game on a
+      GPU server and streaming it) or a full rewrite — neither of which preserves the
+      original game unchanged.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>Landing page only — the game runs on your desktop. Full source &amp; docs: <a href="https://github.com/YOUR_USERNAME/YOUR_REPO" target="_blank" rel="noopener">GitHub repository</a>.</p>
+  </footer>
+</div>
+</body>
+</html>

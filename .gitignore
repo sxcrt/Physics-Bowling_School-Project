@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# Python bytecode / caches
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Virtual environments
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------------------------------------------------------
+# Runtime-generated, user-specific files (the game recreates these)
+# ---------------------------------------------------------------------------
+settings.json
+webcam_swing.log
+
+# Screenshots written by the game (F12) and the screenshot tour
+strike-lab_*.jpg
+strike-lab_*.png
+
+# Runtime log written by the packaged executable
+hells_balls.log
+
+# The frozen exe resolves __file__-based paths under <CWD>/Lib, so running it
+# from the repo root creates this directory. It is never part of the source.
+/Lib/
+
+# ---------------------------------------------------------------------------
+# Packaging output (Panda3D build_apps / PyInstaller)
+# ---------------------------------------------------------------------------
+/build/
+/dist/
+/dist-apps/
+*.spec
+build_apps*.log
+package_run.log
+
+# ---------------------------------------------------------------------------
+# OS / editor cruft
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
