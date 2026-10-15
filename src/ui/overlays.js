@@ -1,7 +1,6 @@
 // Interactive overlays for the play screen (ported from ui/overlays.py):
 // pause, results and the turn handoff banner.
-import { COLORS, PALETTE, TYPE_PX, css, cssA, wrapText } from './theme.js';
-import { div, el, button as makeButton } from './dom.js';
+import { COLORS, PALETTE, TYPE_PX, css, cssA, wrapText } from './theme.js';import { div, el, button as makeButton } from './dom.js';
 
 class Overlay {
   constructor(parent, { fullWidth = 0.62, height = 0.40, accent = COLORS.cyan, backdrop = true } = {}) {
@@ -71,7 +70,7 @@ class Overlay {
       button.style.top = `${cursor}px`;
       cursor += buttonH + gap;
     }
-    const bodyTop = top + 0.125 * 720;
+    const bodyTop = top + 0.125 * 720 + (this._topReserve || 0);
     const bodyBottom = bottom - total - 22;
     const available = Math.max(40, bodyBottom - bodyTop);
     const wrapped = [];
@@ -203,22 +202,26 @@ export class HandoffBanner {
     this.backdrop = div('handoff-backdrop', this.root);
     this.backdrop.style.cssText = `position:absolute;left:0;top:0;width:100%;height:100%;background:${cssA(PALETTE.ink, 0.45)};`;
     this.panel = div('handoff-panel', this.root);
-    this.panel.style.cssText = 'position:absolute;left:272px;top:180px;width:736px;height:216px;border-radius:16px;'
-      + `background:${cssA(PALETTE.panel, 0.94)};`;
+    this.panel.style.cssText = 'position:absolute;left:272px;top:236px;width:736px;height:214px;border-radius:16px;'
+      + `background:${cssA(PALETTE.panel, 0.96)};box-shadow:0 20px 60px rgba(0,0,0,0.6);`;
     this.hairline = div('handoff-hairline', this.root);
-    this.hairline.style.cssText = `position:absolute;left:272px;top:180px;width:736px;height:4px;background:${cssA(PALETTE.cyan, 0.9)};`;
+    this.hairline.style.cssText = `position:absolute;left:272px;top:236px;width:736px;height:4px;background:${cssA(PALETTE.cyan, 0.9)};`;
     this.heading = el('div', '', this.root, 'NEXT BOWLER');
-    this.heading.style.cssText = `position:absolute;left:640px;top:200px;transform:translateX(-50%);font-size:24px;font-weight:900;color:${css(PALETTE.white)};`
-      + `text-shadow:0 0 16px ${cssA(PALETTE.cyan, 0.8)};`;
+    this.heading.style.cssText = `position:absolute;left:640px;top:254px;transform:translateX(-50%);`
+      + `font-size:14px;font-weight:800;letter-spacing:4px;color:${cssA(COLORS.text_dim, 0.95)};`;
     this.name = el('div', '', this.root, '');
-    this.name.style.cssText = `position:absolute;left:640px;top:236px;transform:translateX(-50%);font-size:30px;font-weight:900;color:${css(PALETTE.amber)};`
-      + `text-shadow:0 0 16px ${cssA(PALETTE.amber, 0.8)};`;
+    this.name.style.cssText = `position:absolute;left:640px;top:276px;transform:translateX(-50%);`
+      + `font-size:36px;font-weight:900;letter-spacing:1px;color:${css(PALETTE.amber)};`
+      + `text-shadow:0 0 18px ${cssA(PALETTE.amber, 0.7)};line-height:1.1;`;
     this.instructions = el('div', '', this.root, '');
-    this.instructions.style.cssText = 'position:absolute;left:640px;top:284px;transform:translateX(-50%);font-size:15px;color:rgb(176,184,210);text-align:center;white-space:pre-line;';
+    this.instructions.style.cssText = 'position:absolute;left:640px;top:330px;transform:translateX(-50%);'
+      + 'width:600px;font-size:15px;line-height:1.6;color:rgb(186,192,218);text-align:center;white-space:pre-line;';
     this.status = el('div', '', this.root, '');
-    this.status.style.cssText = 'position:absolute;left:640px;top:352px;transform:translateX(-50%);font-size:15px;color:#fff;';
+    this.status.style.cssText = 'position:absolute;left:640px;top:400px;transform:translateX(-50%);'
+      + 'font-size:13px;letter-spacing:2px;color:rgba(186,192,218,0.9);';
     this._track = div('handoff-track', this.root);
-    this._track.style.cssText = `position:absolute;left:640px;top:376px;transform:translateX(-50%);width:440px;height:12px;border-radius:6px;background:${cssA(PALETTE.panel_dark, 0.9)};overflow:hidden;`;
+    this._track.style.cssText = `position:absolute;left:640px;top:422px;transform:translateX(-50%);`
+      + `width:440px;height:12px;border-radius:6px;background:${cssA(PALETTE.panel_dark, 0.9)};overflow:hidden;`;
     this._fill = div('handoff-fill', this._track);
     this._fill.style.cssText = `width:0%;height:100%;background:${cssA(PALETTE.green, 0.85)};`;
   }
@@ -227,11 +230,12 @@ export class HandoffBanner {
   show() { this.root.style.display = 'block'; }
   update(name, lines, progress, accent = null, colour = null) {
     this.show();
+    const clamped = Math.max(0, Math.min(1, progress));
     this.name.textContent = name;
     this.name.style.color = css(accent || PALETTE.amber);
     this.instructions.textContent = lines.join('\n');
-    this.status.textContent = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
-    this._fill.style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
+    this.status.textContent = `${Math.round(clamped * 100)}%`;
+    this._fill.style.width = `${clamped * 100}%`;
     this._fill.style.background = cssA(colour || PALETTE.green, 0.9);
   }
 }

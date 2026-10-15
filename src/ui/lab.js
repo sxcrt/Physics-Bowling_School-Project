@@ -2,6 +2,7 @@
 import * as config from '../config.js';
 import { DeckTimeline, RollResult } from '../physics.js';
 import { fovPushIn, fovReset, updateCamera } from '../scene/camera.js';
+import { setShadowFocus } from '../scene/shadow.js';
 import { COLORS, css, cssA, wrapText } from './theme.js';
 import { div, el, button as makeButton } from './dom.js';
 import { Screen } from './screens.js';
@@ -52,7 +53,7 @@ export class LabScreen extends Screen {
       + `text-shadow:0 0 12px ${cssA(COLORS.pink, 0.8)};`;
 
     // left panel: throw controls
-    this.launchPanel = this._panel(-0.62, 0.0, 0.40, 0.66);
+    this.launchPanel = this._panel(-0.6489, 0.0, 0.44, 0.66);
     const launchTitle = el('div', '', this.launchPanel, 'THROW');
     launchTitle.style.cssText = `font-size:14px;font-weight:700;letter-spacing:1px;color:${css(COLORS.cyan)};`;
     this.steppers = {};
@@ -60,11 +61,11 @@ export class LabScreen extends Screen {
       this.steppers[key] = this._stepper(caption, () => this._valueText(key), (dir) => this._step(key, dir));
     }
     this.pauseButton = makeButton(this.root, 'PAUSE', {
-      x: 128.8, y: 414, w: 115, h: 36, radius: 10, accent: [255, 214, 130], variant: 'secondary', fontPx: 15,
+      x: 100.8, y: 414, w: 129, h: 36, radius: 10, accent: [255, 214, 130], variant: 'secondary', fontPx: 15,
       onClick: () => this.togglePause(),
     });
     this.resetButton = makeButton(this.root, 'RESET', {
-      x: 258.4, y: 414, w: 115, h: 36, radius: 10, accent: [176, 184, 210], variant: 'secondary', fontPx: 15,
+      x: 244.8, y: 414, w: 129, h: 36, radius: 10, accent: [176, 184, 210], variant: 'secondary', fontPx: 15,
       onClick: () => this.reset(),
     });
     const stateTitle = el('div', '', this.launchPanel, 'BALL STATE  (SI)');
@@ -72,16 +73,18 @@ export class LabScreen extends Screen {
     this.stateText = el('div', '', this.launchPanel, '');
     this.stateText.style.cssText = `position:absolute;left:20px;top:337px;font-size:13px;color:${css(COLORS.grey)};white-space:pre;font-family:monospace;`;
     this.bowlButton = makeButton(this.root, 'BOWL', {
-      x: 193.6, y: 558, w: 245, h: 44, radius: 12, accent: [74, 222, 128], variant: 'primary', fontPx: 18,
+      x: 172.8, y: 558, w: 273, h: 44, radius: 12, accent: [74, 222, 128], variant: 'primary', fontPx: 18,
       onClick: () => this.bowl(),
     });
 
     // right panel: live readout
-    this.livePanel = this._panel(0.62, 0.0, 0.40, 0.66);
-    const liveTitle = el('div', '', this.livePanel, 'LIVE');
+    this.livePanel = this._panel(0.6489, 0.0, 0.44, 0.66);
+    const liveHead = div('', this.livePanel);
+    liveHead.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;';
+    const liveTitle = el('div', '', liveHead, 'LIVE');
     liveTitle.style.cssText = `font-size:14px;font-weight:700;letter-spacing:1px;color:${css([120, 230, 140])};`;
-    const liveHint = el('div', '', this.livePanel, 'CLICK A ROW FOR THE EQUATION');
-    liveHint.style.cssText = `font-size:12px;color:${css(COLORS.dim)};margin-top:2px;`;
+    const liveHint = el('div', '', liveHead, 'CLICK A ROW FOR THE EQUATION');
+    liveHint.style.cssText = `font-size:12px;color:${css(COLORS.dim)};`;
     this.liveRows = {};
     for (const [key, label, _unit] of READOUT) {
       const row = div('live-row', this.livePanel);
@@ -102,23 +105,25 @@ export class LabScreen extends Screen {
       this.liveRows[key] = { row, value, detail };
     }
     makeButton(this.root, 'BACK TO MENU', {
-      x: 1086.4, y: 688, w: 245, h: 40, radius: 10, accent: [176, 184, 210], variant: 'ghost', fontPx: 16,
+      x: 1107.2, y: 687.6, w: 273, h: 40, radius: 10, accent: [176, 184, 210], variant: 'ghost', fontPx: 16,
       onClick: () => this.app.goToMenu(),
     }).dataset.role = 'back';
 
     this.banner = el('div', '', this.root, '');
-    this.banner.style.cssText = `position:absolute;left:640px;top:60px;transform:translateX(-50%);font-size:22px;font-weight:900;color:#fff;`
+    this.banner.style.cssText = `position:absolute;left:640px;top:81px;transform:translateX(-50%);font-size:18px;font-weight:900;color:#fff;`
       + `text-shadow:0 0 18px ${cssA([255, 214, 130], 0.8)};`;
 
     // timeline
-    this.tlPanel = this._panel(0, -0.415, 0.82, 0.16);
+    this.tlPanel = this._panel(0, -0.415, 0.828, 0.16);
     this.tlPanel.style.height = '115px';
     this.tlStatus = el('div', '', this.root, 'ready - click BOWL to start the run');
-    this.tlStatus.style.cssText = `position:absolute;left:640px;bottom:12px;transform:translateX(-50%);font-size:12px;color:${css(COLORS.dim)};`;
+    this.tlStatus.style.cssText = `position:absolute;left:640px;bottom:16px;transform:translateX(-50%);font-size:12px;color:${css(COLORS.dim)};`;
+    const tlTitle = el('div', '', this.root, 'TIMELINE');
+    tlTitle.style.cssText = `position:absolute;left:366px;top:617px;font-size:16px;font-weight:700;color:${css([255, 214, 130])};`;
     this.tlTime = el('div', '', this.root, 't =  0.000 s /  0.000 s');
-    this.tlTime.style.cssText = `position:absolute;left:640px;bottom:96px;transform:translateX(-50%);font-size:14px;color:#fff;`;
+    this.tlTime.style.cssText = `position:absolute;left:640px;top:617px;transform:translateX(-50%);font-size:14px;color:#fff;`;
     this.tlTrack = div('tl-track', this.root);
-    this.tlTrack.style.cssText = `position:absolute;left:232px;bottom:56px;width:816px;height:8px;border-radius:4px;`
+    this.tlTrack.style.cssText = `position:absolute;left:364px;top:656px;width:553px;height:8px;border-radius:4px;`
       + `background:${cssA(COLORS.hairline, 1)};cursor:pointer;`;
     this.tlFill = div('tl-fill', this.tlTrack);
     this.tlFill.style.cssText = 'width:0%;height:100%;border-radius:4px;background:#3ec9e8;';
@@ -180,6 +185,9 @@ export class LabScreen extends Screen {
   }
   onShow(kwargs = {}) {
     this.app.setCameraView('game');
+    // The lab frames the whole alley, so the shadow frustum opens out to cover
+    // the approach, the lane and the deck together.
+    setShadowFocus(0.0, 9.0, 10.4);
     if (kwargs.throw) this._loadThrow(kwargs.throw);
     this._begin();
   }

@@ -16,10 +16,13 @@ import { PinRack } from '../scene/pins.js';
 import {
   fovPushIn, fovReset, setShakeProvider, setView, setupCamera, updateCamera,
 } from '../scene/camera.js';
+import { DECK_RADIUS, MAX_RADIUS, setShadowFocus } from '../scene/shadow.js';
 import { buildLane } from '../scene/lane.js';
 import * as avatarStates from '../scene/avatar.js';
 import { Bowler } from '../scene/avatar.js';
 import { Hud } from '../ui/hud.js';
+import { FullScorecard } from '../ui/fullscorecard.js';
+import { heldKeys } from '../input/keyboard.js';
 import { keyToCharacter } from '../ui/theme.js';
 import { HandoffBanner, PauseOverlay, ResultsOverlay } from '../ui/overlays.js';
 import { WebcamPanel } from '../ui/webcam_panel.js';
@@ -61,7 +64,9 @@ export class Game {
 
     this.ui_root = uiRoot || document.body;
     this.uiRootEl = document.createElement('div');
-    this.uiRootEl.style.cssText = 'position:absolute;left:0;top:0;width:1280px;height:720px;pointer-events:none;';
+    // The play readout belongs to the play screen only: it starts hidden and
+    // is shown by show() when the play screen becomes active.
+    this.uiRootEl.style.cssText = 'position:absolute;left:0;top:0;width:1280px;height:720px;pointer-events:none;display:none;';
     this.ui_root.appendChild(this.uiRootEl);
     this.webcam_panel = new WebcamPanel(this.uiRootEl);
     this.hud = new Hud(this.uiRootEl);
@@ -126,6 +131,7 @@ export class Game {
       onLab: () => this._open_lab(),
     });
     this.handoff_banner = new HandoffBanner(this.uiRootEl);
+    this.scorecard_overlay = new FullScorecard(this.uiRootEl);
     this._overlay = null;
 
     this.motion = new MotionDirector(this.hud, this.ball, this.pins, this.uiRootEl);    this.motion.bindOverlays(this.pause_overlay, this.results_overlay);
@@ -211,6 +217,7 @@ export class Game {
 
   hide() {
     this._hide_overlays();
+    if (this.scorecard_overlay) this.scorecard_overlay.hide();
     this.uiRootEl.style.display = 'none';
     for (const avatar of Object.values(this._avatars)) avatar.visible = false;
     if (this.input_source.reset) this.input_source.reset();
@@ -964,6 +971,77 @@ export class Game {
     this._physics_lines = lines;
   }
 
+  // ==== Shadow rig ====
+  // The shadow map is 2048x2048, so widening the frustum trades shadow
+  // sharpness for coverage. Focus the pin deck when the deck is what we are
+  // looking at, and widen just enough to keep the rolling ball inside the map.
+  _update_shadow_focus() {
+    const head = config.HEAD_PIN_Z;
+    const far = head + 1.0;
+    let near = head - 4.0;
+    if (this.state === 'rolling' || this.state === 'settling') {
+      near = Math.min(this.ball.physics.z, head - 4.0);
+    }
+    const span = far - near;
+    const radius = clamp(span / 2.0 + 1.0, DECK_RADIUS, MAX_RADIUS);
+    const centre = clamp((near + far) / 2.0, far + 1.0 - radius, near - 1.0 + radius);
+    setShadowFocus(this.ball.physics.x * 0.35, centre, radius);
+  }
+
+  // ==== Held scorecard (RIGHT SHIFT) ====
+  // Purely presentational: it reads the live match and never touches the roll in
+  // progress, the input source or the score.
+  get scorecardHeld() { return heldKeys.has('right shift'); }
+
+  // Every sibling of the card inside the play UI root (the HUD, the modal
+  // overlays, and the motion layer's result cards, pop-ups and particles) is
+  // switched off while the card is up, and its exact previous state is restored
+  // afterwards. The motion layer can show a node at any time while the card is
+  // held, so this is re-applied every frame rather than only on the transition.
+  _hide_card_siblings() {
+    for (const child of Array.from(this.uiRootEl.children)) {
+      if (child === this.scorecard_overlay.root) continue;
+      if (child.style.display === 'none') continue;
+      if (!this._cardSiblings.some(([node]) => node === child)) {
+        this._cardSiblings.push([child, child.style.display]);
+      }
+      child.style.display = 'none';
+    }
+  }
+
+  _set_card_mode(on) {
+    if (this._cardMode === on) return;
+    this._cardMode = on;
+    if (on) {
+      this._cardSiblings = [];
+      this._hide_card_siblings();
+    } else {
+      for (const [child, display] of (this._cardSiblings || [])) child.style.display = display;
+      this._cardSiblings = null;
+      // The owners of the shared elements reassert their own visibility, so a
+      // restored display value can never disagree with the game state.
+      this._hud();
+      this._webcam_panel_update(this.inputs.webcam);
+    }
+  }
+
+  _update_scorecard_overlay() {
+    const overlay = this.scorecard_overlay;
+    if (!overlay) return;
+    const held = this.scorecardHeld && !!this.match;
+    if (!held) {
+      this._set_card_mode(false);
+      if (overlay.visible) overlay.hide();
+      this._sync_hud_visibility();
+      return;
+    }
+    overlay.show();
+    this._set_card_mode(true);
+    this._hide_card_siblings();
+    this._sync_hud_visibility();
+    overlay.update({ mode: this.mode, match: this.match });
+  }
+
   // ==== Per-frame update ====
   update(dt) {
     const webcam = this.inputs.webcam;
@@ -987,6 +1065,7 @@ export class Game {
       this._webcam_panel_update(webcam);
       this._hud();
       this._update_motion(dt, true);
+      this._update_scorecard_overlay();
       return;
     }
 
@@ -997,6 +1076,7 @@ export class Game {
         this._webcam_panel_update(webcam);
         updateCamera(this.ball, this.state, dt);
         this._hud();
+        this._update_scorecard_overlay();
         return;
       }
     }
@@ -1021,11 +1101,15 @@ export class Game {
 
     this.pins.update();
     this.ball.update();
+    this._update_shadow_focus();
     this._webcam_panel_update(webcam);
     updateCamera(this.ball, this.state, dt);
     this._overlay_update(dt);
     this._hud();
     this._update_motion(dt, false);
+    // The card is applied last so nothing the motion layer shows this frame can
+    // end up on top of it.
+    this._update_scorecard_overlay();
   }
 
   _advance_roll(dt) {
@@ -1119,6 +1203,18 @@ export class Game {
     this._overlay.layout();
   }
 
+  // A full-screen modal (pause, results) owns the frame: the play HUD behind it
+  // is noise - a "Match over" status line poking out of the results panel is the
+  // kind of detail that makes a game look unfinished.
+  _sync_hud_visibility() {
+    const overlayUp = this._overlay !== null && this._overlay.visible;
+    const cardUp = !!(this.scorecard_overlay && this.scorecard_overlay.visible);
+    const want = !overlayUp && !cardUp;
+    if (want === this._hudVisible) return;
+    this._hudVisible = want;
+    this.hud.setVisible(want);
+  }
+
   _hud() {
     const knockdowns = this.state === 'result' ? this.knockdowns : null;
     const timer = this.mode.timed && this.match ? this.match.time_left : null;
@@ -1138,6 +1234,7 @@ export class Game {
       standing_pins: standing === null ? 0 : standing, score_value: scoreValue,
       hints_unlocked: this.hints_unlocked, attempts_left: this.attempts_left,
       throw_earned: this.throw_earned,
+      handoff_banner: this.handoff_banner.visible,
       challenge_state: this.state === 'challenge' && this.challenge !== null ? this._challenge_view() : null,
     });
     if (this.state !== 'handoff') this.handoff_banner.hide();

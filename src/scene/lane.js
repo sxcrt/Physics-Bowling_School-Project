@@ -3,8 +3,9 @@ import * as THREE from 'three';
 // gutters, the neon city.
 import * as config from '../config.js';
 import { scene } from './renderer.js';
-import { unlitMaterial } from './shader.js';
+import { surfaceMaterial, unlitMaterial } from './shader.js';
 import { quadGeometry, triangleGeometry, discGeometry } from './geometry.js';
+import { enableShadows, installShadowRig } from './shadow.js';
 import {
   approachTexture, citySkylineTexture, facadeTexture, glowTexture,
   gradientTexture, woodTexture,
@@ -12,12 +13,16 @@ import {
 
 const ARROW_SPACING = 0.1524;
 const ARROW_Z = 4.572;
+// The seven chevrons are set one board (0.1524 m) apart, so they have to be
+// narrower than that to read as seven arrows rather than one zig-zag band.
 const ARROW_LENGTH = 0.30;
-const ARROW_WIDTH = 0.16;
-const DOT_RADIUS = 0.035;
+const ARROW_WIDTH = 0.085;
+const DOT_RADIUS = 0.014;
 const DOT_Z = -0.95;
-const MARKING_COLOR = [34, 22, 20];
+// Dark wood inlay, not printer black: the markings are lit surfaces now.
+export const MARKING_COLOR = [74, 44, 30];
 const WALL_X = 2.7;
+const WALL_HEIGHT = 3.4;
 
 export const NEON_STRIPS = [];
 export const LANE_ARROWS = [];
@@ -25,26 +30,42 @@ export let PIN_GLOW = null;
 
 function col(rgb) { return new THREE.Color(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255); }
 function rgba(rgb, alpha = 1.0) { return { color: col(rgb), alpha: Math.max(0, Math.min(1, alpha)) }; }
+function rgbCss(rgb, alpha = 1) { return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`; }
 
-function box(w, h, d, x, y, z, material) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-  mesh.position.set(x, y, z);
+function add(mesh, { cast = false, receive = true } = {}) {
+  enableShadows(mesh, { cast, receive });
   scene.add(mesh);
   return mesh;
 }
 
+function box(w, h, d, x, y, z, material, opts = null) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  mesh.position.set(x, y, z);
+  return add(mesh, opts || {});
+}
+
+// A shaded surface (wood, painted deck, gutter channel).
+function lit(color, map = null, opts = {}) {
+  return surfaceMaterial(Object.assign({
+    map, color: col(color), receiveShadow: true, shadowStrength: 0.88,
+  }, opts));
+}
+
+// An unlit neon/glow/decal surface. Neon emits, so it neither receives nor
+// casts shadows.
 function unlit(color, alpha = 1.0, map = null) {
   return unlitMaterial(col(color), map, { transparent: alpha < 1.0 || !!map, opacity: alpha });
 }
 
-// An unlit neon/glow/decal surface.
-function _unlit({ geometry, position, material }) {
+function _unlit({ geometry, position, material, receive = true }) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(...position);
-  scene.add(mesh);
-  return mesh;
+  return add(mesh, { receive });
 }
 
+// ---------------------------------------------------------------------------
+// Decks
+// ---------------------------------------------------------------------------
 function _buildDecks() {
   // floor
   _unlit({ geometry: new THREE.PlaneGeometry(24, config.LANE_LENGTH * 2 + 2 * config.APPROACH_LENGTH).rotateX(-Math.PI / 2),
@@ -52,54 +73,60 @@ function _buildDecks() {
            material: unlit(config.FLOOR_COLOR) });
   // approach
   box(config.TOTAL_WIDTH, config.LANE_THICKNESS, config.APPROACH_LENGTH,
-      0, -config.LANE_THICKNESS / 2, -config.APPROACH_LENGTH / 2, unlit(config.APPROACH_COLOR));
+      0, -config.LANE_THICKNESS / 2, -config.APPROACH_LENGTH / 2, lit(config.APPROACH_COLOR));
   _unlit({ geometry: quadGeometry(config.TOTAL_WIDTH, config.APPROACH_LENGTH),
            position: [0, 0.0015, -config.APPROACH_LENGTH / 2],
-           material: unlit([255, 255, 255], 1.0, approachTexture()) });
+           material: lit([255, 255, 255], approachTexture(), { specular: 0.06, specularPower: 18.0 }) });
   // lane
   box(config.LANE_WIDTH, config.LANE_THICKNESS, config.LANE_LENGTH,
-      0, -config.LANE_THICKNESS / 2, config.LANE_LENGTH / 2, unlit(config.LANE_COLOR));
+      0, -config.LANE_THICKNESS / 2, config.LANE_LENGTH / 2, lit(config.LANE_COLOR));
   _unlit({ geometry: quadGeometry(config.LANE_WIDTH, config.LANE_LENGTH),
            position: [0, 0.0015, config.LANE_LENGTH / 2],
-           material: unlit([255, 255, 255], 1.0, woodTexture()) });
+           material: lit([255, 255, 255], woodTexture(), { specular: 0.14, specularPower: 22.0 }) });
   // pin deck
   box(config.LANE_WIDTH, config.LANE_THICKNESS, config.PIN_DECK_LENGTH,
-      0, -config.LANE_THICKNESS / 2, config.LANE_LENGTH + config.PIN_DECK_LENGTH / 2, unlit(config.PIN_DECK_COLOR));
+      0, -config.LANE_THICKNESS / 2, config.LANE_LENGTH + config.PIN_DECK_LENGTH / 2, lit(config.PIN_DECK_COLOR));
   _unlit({ geometry: quadGeometry(config.LANE_WIDTH, config.PIN_DECK_LENGTH),
            position: [0, 0.0015, config.LANE_LENGTH + config.PIN_DECK_LENGTH / 2],
-           material: unlit([255, 255, 255], 1.0, woodTexture({ boards: 39, width: 256, height: 384, base: config.PIN_DECK_COLOR, grain: 0.10, sheen: 0.30, seed: 23 })) });
+           material: lit([255, 255, 255], woodTexture({ boards: 39, width: 256, height: 384, base: config.PIN_DECK_COLOR, grain: 0.10, sheen: 0.30, seed: 23 }), { specular: 0.14, specularPower: 22.0 }) });
   // pit apron
   box(config.LANE_WIDTH, config.LANE_THICKNESS, 1.8,
-      0, -config.LANE_THICKNESS / 2, config.LANE_LENGTH + config.PIN_DECK_LENGTH + 0.9, unlit(config.GUTTER_COLOR));
+      0, -config.LANE_THICKNESS / 2, config.LANE_LENGTH + config.PIN_DECK_LENGTH + 0.9, lit(config.GUTTER_COLOR));
   // foul line
   box(config.LANE_WIDTH, 0.02, 0.06, 0, 0.01, config.FOUL_LINE_Z, unlit(config.FOUL_LINE_COLOR));
 }
 
+// ---------------------------------------------------------------------------
+// Markings
+// ---------------------------------------------------------------------------
 function _buildMarkings() {
   LANE_ARROWS.length = 0;
   for (let index = -3; index <= 3; index++) {
     const x = index * ARROW_SPACING;
     const arrow = _unlit({ geometry: triangleGeometry(ARROW_WIDTH, ARROW_LENGTH),
-                           position: [x, 0.004, ARROW_Z],
-                           material: unlit(MARKING_COLOR, 0.96) });
+                           position: [x, 0.0035, ARROW_Z],
+                           material: lit(MARKING_COLOR, null, { shadowStrength: 0.8 }) });
     LANE_ARROWS.push(arrow);
-    _unlit({ geometry: discGeometry(DOT_RADIUS, 14), position: [x, 0.004, DOT_Z],
-             material: unlit(MARKING_COLOR, 0.90) });
+    _unlit({ geometry: discGeometry(DOT_RADIUS, 14), position: [x, 0.0035, DOT_Z],
+             material: lit(MARKING_COLOR, null, { shadowStrength: 0.8 }) });
   }
   let z = 1.1;
   const end = config.LANE_LENGTH + config.PIN_DECK_LENGTH - 1.2;
   while (z < end) {
-    box(0.03, 0.004, 0.34, 0, 0.004, z, unlit([96, 226, 255], 0.40));
+    box(0.03, 0.004, 0.34, 0, 0.0035, z, unlit([96, 226, 255], 0.40));
     z += 1.55;
   }
 }
 
+// ---------------------------------------------------------------------------
+// Gutters
+// ---------------------------------------------------------------------------
 function _buildGutters() {
   const railTexture = gradientTexture(config.GUTTER_LIP_COLOR, [52, 14, 32], 4, 64);
   for (const side of [-1, 1]) {
     box(config.GUTTER_WIDTH, config.LANE_THICKNESS, config.LANE_LENGTH,
         side * (config.LANE_WIDTH / 2 + config.GUTTER_WIDTH / 2),
-        -config.LANE_THICKNESS / 2 - 0.06, config.LANE_LENGTH / 2, unlit(config.GUTTER_COLOR));
+        -config.LANE_THICKNESS / 2 - 0.06, config.LANE_LENGTH / 2, lit(config.GUTTER_COLOR));
     const railX = side * (config.LANE_WIDTH / 2 + config.GUTTER_WIDTH + 0.07);
     box(0.14, 0.16, config.LANE_LENGTH, railX, 0.02, config.LANE_LENGTH / 2,
         unlit([255, 255, 255], 1.0, railTexture));
@@ -119,20 +146,27 @@ function _buildGutters() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The neon city
+// ---------------------------------------------------------------------------
 function _buildCity() {
   const lengthCenter = (config.LANE_LENGTH - config.APPROACH_LENGTH) / 2;
   const lengthSpan = config.LANE_LENGTH + config.APPROACH_LENGTH + 2.0;
   const facade = facadeTexture();
   for (const side of [-1, 1]) {
-    box(0.16, 3.4, lengthSpan, side * (WALL_X + 0.08), 1.7, lengthCenter, unlit(config.WALL_COLOR));
+    // The wall body stays unlit and dark: it is a backdrop, and the lane has to
+    // remain the brightest thing in the frame.
+    box(0.16, WALL_HEIGHT, lengthSpan, side * (WALL_X + 0.08), WALL_HEIGHT / 2, lengthCenter, unlit(config.WALL_COLOR));
     let z = -config.APPROACH_LENGTH + 0.6;
     let index = 0;
     while (z < config.LANE_LENGTH + 1.2) {
-      const panelWidth = [1.5, 1.9, 1.25][index % 3];
+      const panelWidth = [2.6, 3.4, 2.1][index % 3];
       const panelHeight = [2.4, 3.2, 2.0][index % 3];
-      box(0.08, panelHeight, panelWidth, side * (WALL_X - 0.06), panelHeight / 2,
-          z + panelWidth / 2, unlit([255, 255, 255], 1.0, facade));
-      z += panelWidth + 0.30;
+      const panel = _unlit({ geometry: new THREE.PlaneGeometry(panelWidth, panelHeight).rotateY(-side * Math.PI / 2),
+                             position: [side * (WALL_X - 0.06), panelHeight / 2, z + panelWidth / 2],
+                             material: unlit(paletteForPanel(index), 1.0, facade) });
+      panel.renderOrder = 0;
+      z += panelWidth + 0.34;
       index += 1;
     }
     NEON_STRIPS.push({
@@ -145,8 +179,8 @@ function _buildCity() {
                 unlit([96, 226, 255], 1.0)),
       baseRgb: [96, 226, 255], baseAlpha: 1.0,
     });
-    for (const [idx, zBar] of [-3.2, 1.2, 5.8, 10.6, 15.4, 19.0].entries()) {
-      box(0.05, 1.3, 0.05, side * (WALL_X - 0.11), 1.20, zBar,
+    for (const [idx, zBar] of [-3.2, 1.2, 5.8, 10.6, 15.4].entries()) {
+      box(0.05, 1.1, 0.05, side * (WALL_X - 0.11), 1.15, zBar,
           unlit(idx % 2 === 0 ? [255, 110, 176] : [96, 226, 255], 0.85));
     }
   }
@@ -166,9 +200,43 @@ function _buildCity() {
     position: [0, 1.6 + 4.75, wallZ + 0.6],
     material: unlit([255, 255, 255], 1.0, citySkylineTexture()),
   });
+  _buildCeiling();
 }
 
+// The alley had no roof, so the top of every frame was empty black. A ceiling at
+// the wall head closes the space with two runs of light and a few cross beams.
+function _buildCeiling() {
+  const top = WALL_HEIGHT;
+  const zStart = -config.APPROACH_LENGTH - 0.4;
+  const zEnd = config.LANE_LENGTH + config.PIN_DECK_LENGTH + 1.6;
+  const span = zEnd - zStart;
+  const centre = (zStart + zEnd) / 2;
+  const shade = gradientTexture([38, 33, 80], [24, 21, 52], 4, 64);
+  _unlit({
+    geometry: quadGeometry(2 * WALL_X + 0.4, span),
+    position: [0, top, centre],
+    material: unlit([255, 255, 255], 1.0, shade),
+  });
+  for (const x of [-1.45, 1.45]) {
+    NEON_STRIPS.push({
+      mesh: box(0.14, 0.035, span - 1.0, x, top - 0.07, centre, unlit([198, 230, 255], 0.92)),
+      baseRgb: [198, 230, 255], baseAlpha: 0.92,
+    });
+  }
+  // Cross beams break the length up and give the roof a sense of scale.
+  for (const z of [-2.6, 3.4, 9.4, 15.0, 19.6]) {
+    box(2 * WALL_X, 0.18, 0.24, 0, top - 0.11, z, unlit([44, 38, 88]));
+    box(1.2, 0.06, 0.10, 0, top - 0.22, z, unlit([255, 236, 200], 0.85));
+  }
+}
+
+// A slightly different tint per facade panel breaks up the repeat and gives the
+// wall a sense of depth without adding new art.
+const PANEL_TINTS = [[255, 255, 255], [206, 214, 255], [255, 226, 236]];
+function paletteForPanel(index) { return PANEL_TINTS[index % PANEL_TINTS.length]; }
+
 export function buildLane() {
+  installShadowRig();
   NEON_STRIPS.length = 0;
   LANE_ARROWS.length = 0;
   _buildDecks();

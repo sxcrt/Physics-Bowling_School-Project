@@ -15,7 +15,7 @@ function scaled(rgb, gain) { return rgb.map((c) => Math.min(255, Math.round(c * 
 export class NeonStrips {
   constructor() {
     this.strips = lane.NEON_STRIPS.map((s) => ({ ...s }));
-    this.arrows = lane.LANE_ARROWS.map((m) => ({ mesh: m, base: m.material.color.getHex() }));
+    this.arrows = lane.LANE_ARROWS.map((m) => ({ mesh: m, base: lane.MARKING_COLOR.slice() }));
     this.clock = 0.0;
     this.spike_level = 0.0;
     this.sequence = [];
@@ -56,7 +56,9 @@ export class NeonStrips {
     if (MOTION.allowPulse() && this.arrows.length) {
       const pulse = ease.breathe(this.clock, MOTION.guide_arrow_period, 0.0, 1.0);
       for (const arrow of this.arrows) {
-        arrow.mesh.material.opacity = (0.65 + MOTION.guide_arrow_pulse * pulse) * 0.96;
+        const rgb = scaled(arrow.base, 1.0 + 0.55 * pulse);
+        const uniform = arrow.mesh.material.uniforms && arrow.mesh.material.uniforms.color;
+        if (uniform) uniform.value.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
       }
     }
   }

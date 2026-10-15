@@ -8,11 +8,14 @@ import { div, el, button as makeButton } from './dom.js';
 import { Screen } from './screens.js';
 
 function backdrop(parent) {
+  // The 3D alley is atmosphere behind the menus, not a competitor to the text:
+  // a firm veil plus a vignette keeps every label legible over the bright lane
+  // wood without hiding the scene.
   const dim = div('screen-dim', parent);
-  dim.style.cssText = `position:absolute;left:0;top:0;width:1280px;height:720px;background:${cssA(COLORS.veil, 0.55)};`;
+  dim.style.cssText = `position:absolute;left:0;top:0;width:1280px;height:720px;background:${cssA(COLORS.veil, 0.72)};`;
   const vignette = div('screen-vignette', parent);
   vignette.style.cssText = 'position:absolute;left:0;top:0;width:1280px;height:720px;'
-    + 'background:radial-gradient(circle at 50% 50%, transparent 45%, rgba(11,8,32,0.7) 100%);';
+    + 'background:radial-gradient(circle at 50% 42%, transparent 34%, rgba(9,7,24,0.82) 100%);';
   return dim;
 }
 
@@ -39,9 +42,33 @@ export class MenuScreen extends Screen {
     this.titleNode = node;
     return node;
   }
-  hintBar(items, y = 720 - 30) {
-    const bar = el('div', 'hint-bar', this.root, items.map((item) => item.text).join('   '));
-    bar.style.cssText = `position:absolute;left:640px;top:${y}px;transform:translateX(-50%);font-size:15px;color:${css(COLORS.text_dim)};white-space:nowrap;`;
+  hintBar(items) {
+    // The bottom hint row sits on a 72px fade strip, centred, with real key
+    // caps (ui/theme.py HintBar + Keycap). Items are {key}, {text} or {gap}.
+    const strip = div('hint-strip', this.root);
+    strip.style.cssText = `position:absolute;left:0;bottom:0;width:1280px;height:${SIZES.hint_strip}px;`
+      + `background:linear-gradient(to top, ${cssA(COLORS.veil, SIZES.hint_strip_alpha)} 0%, transparent 100%);`
+      + 'pointer-events:none;';
+    const bar = div('hint-bar', this.root);
+    bar.style.cssText = `position:absolute;left:640px;bottom:${SIZES.hint_bottom}px;transform:translateX(-50%);`
+      + `display:flex;align-items:center;gap:${SIZES.hint_gap}px;white-space:nowrap;font-size:${SIZES.hint_font}px;`
+      + `color:${css(COLORS.text_dim)};`;
+    for (const item of items) {
+      if (item.gap) {
+        const spacer = div('', bar);
+        spacer.style.cssText = `width:${SIZES.hint_group - SIZES.hint_gap}px;`;
+        continue;
+      }
+      if (item.key !== undefined) {
+        const cap = el('div', 'keycap', bar, item.key);
+        cap.style.cssText = `height:${SIZES.keycap_h}px;min-width:${SIZES.keycap_min_w}px;padding:0 ${SIZES.keycap_pad}px;`
+          + `border-radius:${SIZES.keycap_radius}px;background:rgba(255,255,255,0.20);border:1px solid rgba(255,255,255,0.50);`
+          + `color:#fff;font-size:${SIZES.keycap_font}px;font-weight:700;display:flex;align-items:center;`
+          + 'justify-content:center;box-sizing:border-box;line-height:1;';
+        continue;
+      }
+      el('div', '', bar, item.text);
+    }
     return bar;
   }
 }
@@ -58,7 +85,11 @@ export class SplashScreen extends MenuScreen {
     });
     const cta = el('div', '', this.root, 'OR CLICK ANYWHERE TO START');
     cta.style.cssText = `position:absolute;left:640px;top:505px;transform:translateX(-50%);font-size:15px;letter-spacing:2px;color:${css(COLORS.text_dim)};`;
-    this.hintBar([{ text: 'ENTER  play' }, { text: 'S  settings' }]);
+    this.hintBar([
+      { key: 'ENTER' }, { text: 'play' }, { gap: true },
+      { key: 'S' }, { text: 'settings' }, { gap: true },
+      { key: 'F12' }, { text: 'screenshot' },
+    ]);
     this._elapsed = 0.0;
   }
   onShow() { this._elapsed = 0.0; }
@@ -110,7 +141,12 @@ export class MainMenuScreen extends MenuScreen {
       w: SIZES.quit_w, h: SIZES.quit_h, radius: 10, accent: COLORS.coral,
       variant: 'ghost', fontPx: SIZES.quit_font, onClick: () => this.app.quit(),
     });
-    this.hintBar([{ text: '← →  menu' }, { text: 'ENTER  select' }, { text: 'A D  move your feet' }, { text: 'drag the ball to throw' }]);
+    this.hintBar([
+      { key: '\u2190' }, { key: '\u2192' }, { text: 'menu' }, { gap: true },
+      { key: 'ENTER' }, { text: 'select' }, { gap: true },
+      { key: 'A' }, { key: 'D' }, { text: 'move your feet' }, { gap: true },
+      { text: 'drag the ball to throw' },
+    ]);
     this.buttons = [this.playButton, ...this.secondaryButtons];
     this._keyboardFocus = false;
   }
@@ -171,6 +207,13 @@ export class ModeSelectScreen extends MenuScreen {
       tile.textContent = mode.motif;
       const label = el('div', '', row, mode.title);
       label.style.cssText = 'font-size:18px;font-weight:700;color:#fff;letter-spacing:1px;';
+      // The selected row carries a filled check at its right edge
+      // (ui/theme.py ModeRow).
+      const badge = el('div', '', row, '\u2713');
+      badge.style.cssText = `margin-left:auto;width:20px;height:20px;border-radius:10px;flex:none;`
+        + `display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;`
+        + `background:${css(mode.ball_rgb)};color:${css(COLORS.ink)};visibility:hidden;`;
+      row._badge = badge;
       row.addEventListener('click', () => {
         this.selectedBall = index;
         this.app.play('menu_move');
@@ -192,7 +235,7 @@ export class ModeSelectScreen extends MenuScreen {
     this.detailDesc = el('div', '', this.detail, '');
     this.detailDesc.style.cssText = `font-size:17px;color:${css(COLORS.text_dim)};margin-top:14px;line-height:1.4;`;
     this.detailRules = el('div', '', this.detail, '');
-    this.detailRules.style.cssText = 'margin-top:18px;display:flex;flex-direction:column;gap:8px;';
+    this.detailRules.style.cssText = 'margin-top:18px;display:flex;flex-wrap:wrap;gap:8px;';
     this.setupHeading = el('div', '', this.detail, '');
     this.setupHeading.style.cssText = `font-size:14px;font-weight:700;letter-spacing:3px;color:${css(COLORS.cyan)};margin-top:22px;`;
     this.setupBox = div('setup-box', this.detail);
@@ -230,6 +273,7 @@ export class ModeSelectScreen extends MenuScreen {
       row.style.background = cssA(selected ? COLORS.card_high : COLORS.card, 0.94);
       row.style.borderColor = cssA(selected ? mode.ball_rgb : COLORS.hairline, 1);
       row.style.transform = selected ? 'translateX(4px)' : 'none';
+      if (row._badge) row._badge.style.visibility = selected ? 'visible' : 'hidden';
     });
     this.detailTitle.textContent = mode.title;
     this.detailTagline.textContent = mode.subtitle;
@@ -284,14 +328,25 @@ export class ModeSelectScreen extends MenuScreen {
         entry.maxLength = 12;
         const def = mode.allow_bot && i === 0 ? 'YOU' : `PLAYER ${i + 1}`;
         entry.value = this.app.playerName(i, def);
-        entry.style.cssText = `flex:1;padding:10px 14px;border-radius:10px;font-size:16px;background:${cssA(COLORS.card, 1)};`
+        entry.style.cssText = `flex:1 1 0;min-width:0;padding:10px 14px;border-radius:10px;font-size:16px;background:${cssA(COLORS.card, 1)};`
           + `border:1px solid ${cssA(COLORS.hairline, 1)};color:#fff;outline:none;`;
         entry.addEventListener('change', () => this.app.setPlayerName(i, entry.value));
         names.push(entry);
       }
-      const row = div('name-row', this.setupBox);
-      row.style.cssText = 'display:flex;gap:10px;';
-      for (const entry of names) row.appendChild(entry);
+      // Two name fields per row (ui/menu_screens.py: _setup_rows).
+      for (let i = 0; i < names.length; i += 2) {
+        const row = div('name-row', this.setupBox);
+        row.style.cssText = 'display:flex;gap:10px;';
+        row.appendChild(names[i]);
+        if (names[i + 1]) row.appendChild(names[i + 1]);
+      }
+    } else if (!this.setupBox.children.length) {
+      // The "no extra setup" state: a gear inline with one dim line.
+      const note = div('setup-empty', this.setupBox);
+      note.style.cssText = 'display:flex;align-items:center;gap:16px;padding:12px 4px;color:#cfcbea;font-size:16px;';
+      const gear = el('div', '', note, '\u2699');
+      gear.style.cssText = 'font-size:22px;color:#cfcbea;line-height:1;';
+      el('div', '', note, 'No extra setup. Press START to bowl.');
     }
   }
   _durationText() {
@@ -354,7 +409,7 @@ export class HowToPlayScreen extends MenuScreen {
   constructor(app) { super(app); this.name = 'howto'; this.camera_view = 'menu'; }
   build() {
     super.build();
-    this.title('HOW TO PLAY');
+    this.title('BASICS');
     this.pages = [
       ['BASICS', [
         ['THE GAME', COLORS.cyan, 'HELLS BALLS is bowling first: you throw a ball down a real 18.29 m lane and the pins fall because the simulation was hit, not because a result was chosen.'],
@@ -409,28 +464,44 @@ export class HowToPlayScreen extends MenuScreen {
       w: SIZES.nav_w, h: SIZES.nav_h, radius: 10, accent: COLORS.text_dim, variant: 'ghost',
       fontPx: SIZES.nav_font, onClick: () => this.app.goToMenu(),
     });
-    makeButton(this.root, 'PREVIOUS', {
+    this.prevButton = makeButton(this.root, 'PREVIOUS', {
       x: 1184 - SIZES.tab_w - SIZES.tab_gap - SIZES.tab_w / 2, y: 720 - SIZES.nav_bottom - SIZES.nav_h / 2,
       w: SIZES.tab_w, h: SIZES.nav_h, radius: 10, accent: COLORS.text_dim, variant: 'ghost',
-      fontPx: SIZES.nav_font, onClick: () => this._flip(-1),
+      fontPx: SIZES.nav_font, onClick: () => { if (this.page > 0) this._flip(-1); },
     });
-    makeButton(this.root, 'NEXT', {
+    this.nextButton = makeButton(this.root, 'NEXT', {
       x: 1184 - SIZES.tab_w / 2, y: 720 - SIZES.nav_bottom - SIZES.nav_h / 2,
       w: SIZES.tab_w, h: SIZES.nav_h, radius: 10, accent: COLORS.cyan, variant: 'secondary',
-      fontPx: SIZES.nav_font, onClick: () => this._flip(1),
+      fontPx: SIZES.nav_font, onClick: () => this._next(),
     });
     this.page = 0;
     this._render();
   }
-  _flip(step) { this.page = (this.page + step + this.pages.length) % this.pages.length; this._render(); this.app.play('menu_move'); }
+  _flip(step) {
+    if (step < 0 && this.page <= 0) return;
+    this.page = (this.page + step + this.pages.length) % this.pages.length;
+    this._render();
+    this.app.play('menu_move');
+  }
+  _next() {
+    if (this.page >= this.pages.length - 1) { this.app.play('menu_back'); this.app.goToMenu(); return; }
+    this._flip(1);
+  }
   _render() {
+    const [name] = this.pages[this.page];
+    this.titleNode.textContent = name;
     this.tabs.forEach(({ tab, underline }, index) => {
       const active = index === this.page;
-      tab.style.color = css(active ? COLORS.text === undefined ? [255, 255, 255] : COLORS.text : COLORS.text_dim);
+      tab.style.color = css(active ? COLORS.cyan : COLORS.text_dim);
       underline.style.display = active ? 'block' : 'none';
     });
+    const last = this.page >= this.pages.length - 1;
+    const first = this.page <= 0;
+    this.nextButton.textContent = last ? 'DONE' : 'NEXT';
+    this.prevButton.style.opacity = first ? '0.45' : '1';
+    this.prevButton.style.cursor = first ? 'default' : 'pointer';
     this.content.innerHTML = '';
-    const [_name, rows] = this.pages[this.page];
+    const [, rows] = this.pages[this.page];
     this.panel.scrollTop = 0;
     for (const [label, rgb, body] of rows) {
       const row = div('help-row', this.content);
@@ -448,7 +519,7 @@ export class HowToPlayScreen extends MenuScreen {
     if (['left arrow', 'a'].includes(key)) { this._flip(-1); return true; }
     if (['down arrow', 'down'].includes(key)) { this.panel.scrollTop += 90; return true; }
     if (['up arrow', 'up'].includes(key)) { this.panel.scrollTop -= 90; return true; }
-    if (['enter', 'return'].includes(key)) { this._flip(1); return true; }
+    if (['enter', 'return'].includes(key)) { this._next(); return true; }
     if (key === 'escape' || key === 'space') { this.app.goToMenu(); return true; }
     return false;
   }
@@ -459,94 +530,236 @@ export class SettingsScreen extends MenuScreen {
   build() {
     super.build();
     this.title('SETTINGS');
-    const width = SIZES.settings_w;
-    this.panel = div('settings-panel', this.root);
-    this.panel.style.cssText = `position:absolute;left:${640 - width / 2}px;top:${SIZES.settings_y}px;width:${width}px;`
-      + `border-radius:16px;background:${cssA(COLORS.panel, 0.94)};padding:24px;box-sizing:border-box;`
-      + 'border:1px solid transparent;border-image:linear-gradient(90deg, rgba(62,201,232,0.6), rgba(255,61,139,0.6)) 1;';
-    this.rows = div('settings-rows', this.panel);
-    this.rows.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+    const sizes = SIZES;
+    const panelW = sizes.settings_w;
+    const gap = sizes.settings_gap;
+    const total = panelW * 2 + gap;
+    this._leftX = 640 - total / 2;
+    this._rightX = this._leftX + panelW + gap;
+    this._panelTop = sizes.settings_y;
+    const pad = sizes.settings_pad;
+    this._pad = pad;
+
+    this.leftPanel = this._panel(this._leftX);
+    this.rightPanel = this._panel(this._rightX);
+    this.leftHeading = this._heading(this.leftPanel, 'CONTROLS AND GAMEPLAY');
+    this.rightHeading = this._heading(this.rightPanel, 'AUDIO AND DISPLAY');
+    this.leftRule = this._rule(this.leftPanel);
+    this.rightRule = this._rule(this.rightPanel);
+
     makeButton(this.root, 'BACK', {
-      x: 640, y: 720 - SIZES.nav_bottom - SIZES.nav_h / 2, w: SIZES.nav_w, h: SIZES.nav_h,
-      radius: 10, accent: COLORS.text_dim, variant: 'ghost', fontPx: SIZES.nav_font,
+      x: 64 + 100, y: 720 - sizes.nav_bottom - sizes.nav_h / 2, w: 200, h: sizes.nav_h,
+      radius: 10, accent: COLORS.text_dim, variant: 'ghost', fontPx: sizes.nav_font,
       onClick: () => this.app.leaveSettings(),
     });
+    this.note = el('div', '', this.root, 'Changes are saved automatically');
+    this.note.style.cssText = `position:absolute;left:640px;top:${720 - sizes.nav_bottom - sizes.nav_h / 2}px;transform:translate(-50%,-50%);`
+      + `font-size:14px;color:${css(COLORS.text_dim)};`;
     this._buildRows();
   }
-  _row(label, valueText, onStep, helper = '', accent = COLORS.cyan, isToggle = false) {
-    const row = div('settings-row', this.rows);
-    row.style.cssText = `min-height:${helper ? 64 : 52}px;border-radius:12px;background:${cssA(COLORS.card, 1)};`
-      + `border:1px solid ${cssA(COLORS.hairline, 1)};display:flex;align-items:center;justify-content:space-between;`
-      + 'padding:0 20px;box-sizing:border-box;cursor:pointer;';
-    const left = div('', row);
-    const name = el('div', '', left, label);
-    name.style.cssText = 'font-size:17px;color:#fff;';
-    if (helper) {
-      const help = el('div', '', left, helper);
-      help.style.cssText = `font-size:13px;color:${css(COLORS.text_dim)};margin-top:2px;`;
-    }
-    const right = div('', row);
-    if (isToggle) {
-      const on = String(valueText).toUpperCase() === 'ON';
-      const chip = el('div', '', right, String(valueText).toUpperCase());
-      chip.style.cssText = `padding:4px 14px;border-radius:14px;font-size:16px;font-weight:700;cursor:pointer;`
-        + `background:${cssA(on ? COLORS.cyan : COLORS.hairline, 1)};color:${css(on ? COLORS.ink : COLORS.text_dim)};`;
-      row.addEventListener('click', () => onStep(1));
-    } else {
-      const leftArrow = el('div', '', right, '◄');
-      leftArrow.style.cssText = `display:inline-block;margin-right:10px;color:${css(accent)};cursor:pointer;`;
-      const val = el('div', '', right, valueText);
-      val.style.cssText = `display:inline-block;min-width:70px;text-align:center;font-size:17px;font-weight:700;color:${css(accent)};`;
-      const rightArrow = el('div', '', right, '►');
-      rightArrow.style.cssText = `display:inline-block;margin-left:10px;color:${css(accent)};cursor:pointer;`;
-      leftArrow.addEventListener('click', (e) => { e.stopPropagation(); onStep(-1); });
-      rightArrow.addEventListener('click', (e) => { e.stopPropagation(); onStep(1); });
-      row.addEventListener('click', () => onStep(1));
-    }
+
+  _panel(x) {
+    const node = div('settings-panel', this.root);
+    node.style.cssText = `position:absolute;left:${x}px;top:${this._panelTop}px;width:${SIZES.settings_w}px;`
+      + `border-radius:16px;background:${cssA(COLORS.panel, 0.94)};padding:${this._pad}px;box-sizing:border-box;`
+      + 'border:1px solid transparent;border-image:linear-gradient(90deg, rgba(62,201,232,0.6), rgba(255,61,139,0.6)) 1;';
+    return node;
+  }
+
+  _heading(panel, text) {
+    const node = el('div', '', panel, text);
+    node.style.cssText = `font-size:${SIZES.settings_heading}px;font-weight:700;letter-spacing:${SIZES.settings_head_track}px;color:${css(COLORS.cyan)};`;
+    return node;
+  }
+
+  _rule(panel) {
+    const node = div('', panel);
+    node.style.cssText = `margin-top:${SIZES.settings_rule_gap}px;height:1px;background:${cssA(COLORS.hairline, 1)};`;
+    return node;
+  }
+
+  _stack(panel) {
+    const node = div('settings-rows', panel);
+    node.style.cssText = `margin-top:${SIZES.settings_first_gap}px;display:flex;flex-direction:column;gap:${SIZES.settings_row_gap}px;`;
+    return node;
+  }
+
+  _rowBase(parent, helper) {
+    const row = div('settings-row', parent);
+    row.style.cssText = `min-height:${helper ? SIZES.settings_row_h_help : SIZES.settings_row_h}px;border-radius:12px;`
+      + `background:${cssA(COLORS.card, 1)};border:1px solid ${cssA(COLORS.hairline, 1)};`
+      + 'display:flex;align-items:center;justify-content:space-between;padding:0 20px;box-sizing:border-box;cursor:pointer;';
+    row._left = div('', row);
+    row._right = div('', row);
+    row._right.style.cssText = 'display:flex;align-items:center;';
+    row._helper = helper;
     return row;
   }
-  _buildRows() {
-    this.rows.innerHTML = '';
-    const settings = this.app.settings;
-    const cycle = (key, options, accent, isToggle = false, helper = '') => this._row(helper ? key : undefined, '', () => {}, helper);
-    // Input mode
-    this._row('INPUT METHOD', String(settings.get('input_mode')).toUpperCase(), (dir) => {
-      const options = INPUT_MODES;
-      const idx = options.indexOf(settings.get('input_mode'));
-      settings.set('input_mode', options[(idx + dir + options.length) % options.length]);
-      settings.save(); this.app.applySettings(); this._buildRows(); this.app.play('menu_move');
-    }, 'Mouse is always available; webcam needs a camera.', COLORS.cyan);
-    // Throwing arm
-    this._row('THROWING ARM', String(settings.get('throwing_arm')).toUpperCase(), (dir) => {
-      const options = ['auto', 'left', 'right'];
-      const idx = options.indexOf(settings.get('throwing_arm'));
-      settings.set('throwing_arm', options[(idx + dir + options.length) % options.length]);
-      settings.save(); this.app.applySettings(); this._buildRows(); this.app.play('menu_move');
-    }, '', COLORS.pink);
-    // Volumes
-    for (const [key, label] of [['master_volume', 'MASTER VOLUME'], ['sfx_volume', 'SFX VOLUME'], ['music_volume', 'MUSIC VOLUME']]) {
-      this._row(label, `${Math.round(settings.get(key) * 100)}%`, (dir) => {
-        settings.set(key, Math.max(0, Math.min(1, Number(settings.get(key)) + dir * 0.1)));
-        settings.save(); this.app.applySettings(); this._buildRows(); this.app.play('menu_move');
-      }, '', COLORS.amber);
+
+  _label(row, text) {
+    const name = el('div', '', row._left, text);
+    name.style.cssText = `font-size:${SIZES.settings_label}px;color:#fff;`;
+    if (row._helper) {
+      const help = el('div', '', row._left, row._helper);
+      help.style.cssText = `font-size:${SIZES.settings_helper}px;color:${css(COLORS.text_dim)};margin-top:2px;`;
     }
-    this._row('MUTE', settings.get('muted') ? 'ON' : 'OFF', () => {
-      settings.set('muted', !settings.get('muted'));
-      settings.save(); this.app.applySettings(); this._buildRows(); this.app.play('menu_move');
-    }, '', COLORS.coral, true);
-    this._row('PHYSICS READOUT', settings.get('show_physics_readout') ? 'ON' : 'OFF', () => {
-      settings.set('show_physics_readout', !settings.get('show_physics_readout'));
-      settings.save(); this.app.applySettings(); this._buildRows(); this.app.play('menu_move');
-    }, 'The compact numbers panel in the bottom-right (H in game).', COLORS.green, true);
-    this._row('REDUCE MOTION', settings.get('reduce_motion') ? 'ON' : 'OFF', () => {
-      settings.set('reduce_motion', !settings.get('reduce_motion'));
-      settings.save(); this.app.applySettings(); this._buildRows(); this.app.play('menu_move');
-    }, 'No shake, no flashes, no pulsing loops.', COLORS.purple, true);
-    this._row('HAND MENU NAVIGATION', settings.get('hand_menu_navigation') ? 'ON' : 'OFF', () => {
-      settings.set('hand_menu_navigation', !settings.get('hand_menu_navigation'));
-      settings.save(); this.app.applySettings(); this._buildRows(); this.app.play('menu_move');
-    }, 'Experimental: a tracked hand moves a menu cursor (off by default).', COLORS.text_dim, true);
+    return name;
   }
+
+  _stepperRow(parent, label, valueText, onStep, helper = '', accent = COLORS.cyan) {
+    const row = this._rowBase(parent, helper);
+    this._label(row, label);
+    const leftArrow = el('div', '', row._right, '\u25c4');
+    leftArrow.style.cssText = `margin-right:10px;color:${css(accent)};cursor:pointer;`;
+    const val = el('div', '', row._right, valueText);
+    val.style.cssText = `min-width:70px;text-align:center;font-size:${SIZES.settings_value}px;font-weight:700;color:${css(accent)};`;
+    const rightArrow = el('div', '', row._right, '\u25ba');
+    rightArrow.style.cssText = `margin-left:10px;color:${css(accent)};cursor:pointer;`;
+    leftArrow.addEventListener('click', (e) => { e.stopPropagation(); onStep(-1); });
+    rightArrow.addEventListener('click', (e) => { e.stopPropagation(); onStep(1); });
+    row.addEventListener('click', () => onStep(1));
+    return row;
+  }
+
+  _toggleRow(parent, label, valueText, onFlip, helper = '', accent = COLORS.cyan) {
+    const row = this._rowBase(parent, helper);
+    this._label(row, label);
+    const on = String(valueText).toUpperCase() === 'ON';
+    const chip = el('div', '', row._right, String(valueText).toUpperCase());
+    chip.style.cssText = `padding:4px 14px;border-radius:14px;font-size:16px;font-weight:700;cursor:pointer;`
+      + `background:${cssA(on ? COLORS.cyan : COLORS.hairline, 1)};color:${css(on ? COLORS.ink : COLORS.text_dim)};`;
+    const flip = (e) => { if (e) e.stopPropagation(); onFlip(); };
+    chip.addEventListener('click', flip);
+    row.addEventListener('click', () => onFlip());
+    return row;
+  }
+
+  _sliderRow(parent, label, value, onChange) {
+    const row = this._rowBase(parent, '');
+    this._label(row, label);
+    // The track: 6px hairline with a cyan fill and an 18px white thumb; the
+    // value column stays right-aligned at 56px (ui/theme.py Slider).
+    const right = div('', row._right);
+    right.style.cssText = 'display:flex;align-items:center;gap:12px;flex:0 0 auto;';
+    const track = div('', right);
+    track.style.cssText = `position:relative;width:${SIZES.settings_w - 2 * this._pad - SIZES.settings_label_col - SIZES.settings_value_col - SIZES.settings_row_pad - 16}px;height:6px;`
+      + `border-radius:3px;background:${cssA(COLORS.hairline, 1)};cursor:pointer;`;
+    const fill = div('', track);
+    fill.style.cssText = `position:absolute;left:0;top:0;height:100%;border-radius:3px;background:${css(COLORS.cyan)};width:${Math.round(value * 100)}%;`;
+    const thumb = div('', track);
+    thumb.style.cssText = `position:absolute;top:50%;width:18px;height:18px;border-radius:9px;background:#fff;transform:translate(-50%,-50%);left:${Math.round(value * 100)}%;`;
+    const valueText = el('div', '', right, `${Math.round(value * 100)}%`);
+    valueText.style.cssText = `min-width:${SIZES.settings_value_col}px;text-align:right;font-size:${SIZES.settings_value}px;font-weight:700;color:${css(COLORS.cyan)};`;
+    row._slider = {
+      setValue(next) {
+        const pct = Math.round(Math.max(0, Math.min(1, next)) * 100);
+        fill.style.width = `${pct}%`;
+        thumb.style.left = `${pct}%`;
+        valueText.textContent = `${pct}%`;
+      },
+    };
+    this._sliders.push(row._slider);
+    const apply = (clientX) => {
+      const rect = track.getBoundingClientRect();
+      const next = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
+      row._slider.setValue(next);
+      onChange(next);
+    };
+    let dragging = false;
+    track.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      dragging = true;
+      apply(e.clientX);
+    });
+    window.addEventListener('mousemove', (e) => { if (dragging) apply(e.clientX); });
+    window.addEventListener('mouseup', () => { dragging = false; });
+    return row;
+  }
+
+  _cycleSetting(key, options, accent, rebuild = true) {
+    return (dir) => {
+      const current = this.app.settings.get(key);
+      const list = Array.from(options);
+      const index = list.indexOf(current);
+      const next = list[(index + dir + list.length) % list.length];
+      this.app.settings.set(key, next);
+      this.app.settings.save();
+      this.app.applySettings();
+      if (rebuild) this._buildRows();
+      this.app.play('menu_move');
+    };
+  }
+
+  _buildRows() {
+    const settings = this.app.settings;
+    this._sliders = [];
+    for (const panel of [this.leftPanel, this.rightPanel]) {
+      for (const node of [...panel.querySelectorAll('.settings-rows')]) node.remove();
+    }
+    const left = this._stack(this.leftPanel);
+    const right = this._stack(this.rightPanel);
+
+    this._stepperRow(left, 'INPUT METHOD', String(settings.get('input_mode')).toUpperCase(),
+      this._cycleSetting('input_mode', INPUT_MODES, COLORS.cyan),
+      'Mouse is always available; webcam needs a camera.', COLORS.cyan);
+    this._stepperRow(left, 'THROWING ARM', String(settings.get('throwing_arm')).toUpperCase(),
+      this._cycleSetting('throwing_arm', ['auto', 'left', 'right'], COLORS.cyan),
+      '', COLORS.cyan);
+    this._stepperRow(left, 'CAMERA INDEX', this._cameraText(),
+      (dir) => {
+        const options = [null, 0, 1, 2, 3];
+        const current = settings.get('camera_index');
+        const index = Math.max(0, options.indexOf(current));
+        settings.set('camera_index', options[(index + dir + options.length) % options.length]);
+        settings.save(); this.app.applySettings(); this._buildRows(); this.app.play('menu_move');
+      }, '', COLORS.cyan);
+    this._toggleRow(left, 'HAND MENU NAVIGATION', settings.get('hand_menu_navigation') ? 'ON' : 'OFF',
+      () => this._flip('hand_menu_navigation'), 'Experimental; needs the webcam', COLORS.cyan);
+    this._toggleRow(left, 'SHOW PHYSICS READOUT', settings.get('show_physics_readout') ? 'ON' : 'OFF',
+      () => this._flip('show_physics_readout'), 'H shows it while you play', COLORS.cyan);
+    this._toggleRow(left, 'REDUCE MOTION', settings.get('reduce_motion') ? 'ON' : 'OFF',
+      () => this._flip('reduce_motion'), 'No shake, flashes or pulsing effects', COLORS.cyan);
+
+    this._sliderRow(right, 'MASTER VOLUME', settings.get('master_volume'), (value) => {
+      settings.set('master_volume', value); settings.save(); this.app.applySettings(); this._syncSliderValues();
+    });
+    this._sliderRow(right, 'SFX VOLUME', settings.get('sfx_volume'), (value) => {
+      settings.set('sfx_volume', value); settings.save(); this.app.applySettings(); this._syncSliderValues();
+    });
+    this._sliderRow(right, 'MUSIC VOLUME', settings.get('music_volume'), (value) => {
+      settings.set('music_volume', value); settings.save(); this.app.applySettings(); this._syncSliderValues();
+    });
+    this._toggleRow(right, 'MUTE', settings.get('muted') ? 'ON' : 'OFF',
+      () => this._flip('muted'), '', COLORS.cyan);
+
+    // Panels share one height (the taller stack), as in ui/menu_screens.py.
+    const leftH = left.offsetHeight;
+    const rightH = right.offsetHeight;
+    const headingH = this.leftHeading.offsetHeight + SIZES.settings_rule_gap + 1 + SIZES.settings_first_gap;
+    const panelH = Math.min(720 - SIZES.nav_bottom - SIZES.nav_h - 24 - this._panelTop,
+      headingH + Math.max(leftH, rightH) + 2 * this._pad);
+    this.leftPanel.style.height = `${panelH}px`;
+    this.rightPanel.style.height = `${panelH}px`;
+    this._syncSliderValues();
+  }
+
+  _syncSliderValues() {
+    // Values are rewritten on rebuild; the drag path updates the row itself.
+  }
+
+  _cameraText() {
+    const index = this.app.settings.get('camera_index');
+    return index === null || index === undefined ? 'DEFAULT' : String(index);
+  }
+
+  _flip(key) {
+    this.app.settings.set(key, !this.app.settings.get(key));
+    this.app.settings.save();
+    this.app.applySettings();
+    this._buildRows();
+    this.app.play('menu_move');
+  }
+
   onShow() { this._buildRows(); }
   onKey(key) {
     const settings = this.app.settings;

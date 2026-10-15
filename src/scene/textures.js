@@ -292,6 +292,10 @@ export function citySkylineTexture(width = 1024, height = 256, seed = 17) {
   return tex;
 }
 
+// A neon-lit building facade: dark curtain wall, faint floor bands, and sparse
+// glowing windows. The window grid is deliberately calm - this texture tiles
+// along the whole alley, so every extra lit rectangle is multiplied by two walls
+// and twelve panels and competes with the lane for attention.
 export function facadeTexture() {
   const key = 'facade';
   if (CACHE.has(key)) return CACHE.get(key);
@@ -303,15 +307,23 @@ export function facadeTexture() {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = css(baseRgb);
   ctx.fillRect(0, 0, width, height);
-  const cols = 4, rows = 8;
-  const cellW = width / cols, cellH = height / rows;
+
+  // Floor bands: a two-pixel mullion line every storey reads as architecture
+  // rather than noise.
+  const storeys = 8;
+  const cellH = height / storeys;
+  ctx.fillStyle = css([26, 23, 62]);
+  for (let row = 1; row < storeys; row++) ctx.fillRect(0, row * cellH, width, 2);
+
+  const cols = 4;
+  const cellW = width / cols;
   for (let col = 0; col < cols; col++) {
-    if (rng() < 0.25) continue;
-    for (let row = 1; row < rows - 2; row++) {
-      if (rng() < 0.45) continue;
+    if (rng() < 0.32) continue;
+    for (let row = 1; row < storeys - 2; row++) {
+      if (rng() < 0.62) continue;
       const rgb = litRgbs[Math.floor(rng() * 2)];
-      const padX = cellW * 0.20, padY = cellH * 0.24;
-      ctx.fillStyle = css(mix(rgb, baseRgb, 0.30 + rng() * 0.40));
+      const padX = cellW * 0.28, padY = cellH * 0.30;
+      ctx.fillStyle = css(mix(rgb, baseRgb, 0.46 + rng() * 0.34));
       ctx.fillRect(col * cellW + padX, row * cellH + padY, cellW - 2 * padX, cellH - 2 * padY);
     }
   }
@@ -351,6 +363,32 @@ export function pinTexture() {
     ctx.fillStyle = css(bandColour(v));
     ctx.fillRect(0, rows - 1 - row, width, 1);
   }
+  const tex = toTexture(canvas);
+  CACHE.set(key, tex);
+  return tex;
+}
+
+// A soft contact/ambient-occlusion blob: a flat dark core that falls off to
+// nothing at the rim. Used under the ball, the pins and the bowler so their
+// contact with the lane is never a hard edge.
+export function contactTexture(size = 128, core = 0.40, power = 2.2) {
+  const key = `contact-${size}-${core}-${power}`;
+  if (CACHE.has(key)) return CACHE.get(key);
+  const canvas = makeCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, size, size);
+  const data = imageData.data;
+  const centre = size / 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const d = Math.hypot(x + 0.5 - centre, y + 0.5 - centre) / centre;
+      const t = d <= core ? 1.0 : Math.max(0.0, 1.0 - (d - core) / (1.0 - core));
+      const i = (y * size + x) * 4;
+      data[i] = 5; data[i + 1] = 4; data[i + 2] = 12;
+      data[i + 3] = Math.round(Math.pow(t, power) * 255);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
   const tex = toTexture(canvas);
   CACHE.set(key, tex);
   return tex;

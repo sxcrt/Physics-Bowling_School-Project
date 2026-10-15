@@ -9,6 +9,7 @@ import { MOTION } from './motion/config.js';
 import { setView, updateCameraFixed, setupCamera } from './scene/camera.js';
 import { manager, renderer, scene } from './scene/renderer.js';
 import { buildLane } from './scene/lane.js';
+import { DECK_RADIUS, setShadowFocus } from './scene/shadow.js';
 import { Bowler, IDLE, READY, CELEBRATE } from './scene/avatar.js';
 import { ScreenManager } from './ui/screens.js';
 import { SplashScreen, MainMenuScreen, ModeSelectScreen, HowToPlayScreen, SettingsScreen } from './ui/menu.js';
@@ -43,6 +44,7 @@ class App {
 
     buildLane();
     setupCamera();
+    setShadowFocus(0.0, config.HEAD_PIN_Z, DECK_RADIUS);
     attachPointer(stage);
     attachKeyboard();
 
@@ -91,6 +93,8 @@ class App {
     this._bindKeys();
     manager.setFrameCallback((dt) => this.update(dt));
     manager.start();
+    const boot = document.getElementById('loading');
+    if (boot) boot.style.display = 'none';
   }
 
   // ==== Services ====
@@ -129,6 +133,7 @@ class App {
     const arm = this.settings.get('throwing_arm', 'auto');
     const webcam = this.game.inputs.webcam;
     if (webcam && webcam.setPreferredArm) webcam.setPreferredArm(arm);
+    if (webcam && webcam.setPreferredCamera) webcam.setPreferredCamera(this.settings.get('camera_index', null));
   }
 
   playerName(index, def = null) {
@@ -147,6 +152,10 @@ class App {
   setCameraView(name) {
     this.cameraView = name;
     setView(name);
+    // The play loop drives the shadow frustum itself; the fixed shots get a
+    // sensible focus for the view they show.
+    if (name === 'lab') setShadowFocus(0.0, 7.0, 9.5);
+    else if (name !== 'game') setShadowFocus(0.0, config.HEAD_PIN_Z, DECK_RADIUS);
     this._updateShowcase();
   }
 
@@ -345,9 +354,7 @@ function normalizeKey(key) {
   if (map[key]) return map[key];
   if (key.length === 1) return key.toLowerCase();
   return key.toLowerCase();
-}
-
-// ==== Bootstrap ====
+}// ==== Bootstrap ====
 function boot() {
   const app = new App();
   window.__hellsBalls = app;

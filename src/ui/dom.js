@@ -11,6 +11,28 @@ export function el(tag, className, parent, text) {
 
 export function div(className, parent) { return el('div', className, parent); }
 
+// Set `text` on `node`, truncating to at most `maxLines` rendered lines
+// (mirrors ui/theme.py TextSprite's ``max_lines``: the text is measured in the
+// real layout and an ellipsis marks the cut). maxLines = 0 keeps the full text.
+export function fitLines(node, text, maxLines = 0) {
+  node.textContent = text;
+  if (!maxLines) return;
+  const cs = getComputedStyle(node);
+  const parsed = parseFloat(cs.lineHeight);
+  const lh = Number.isFinite(parsed) ? parsed : parseFloat(cs.fontSize) * 1.3;
+  const maxH = Math.ceil(lh * maxLines + 2);
+  if (node.offsetHeight <= maxH) return;
+  const words = String(text).split(' ');
+  let lo = 1;
+  let hi = words.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    node.textContent = `${words.slice(0, mid).join(' ')}\u2026`;
+    if (node.offsetHeight <= maxH) lo = mid; else hi = mid - 1;
+  }
+  node.textContent = `${words.slice(0, Math.max(1, lo)).join(' ')}\u2026`;
+}
+
 export function place(node, x, y) {
   node.style.position = 'absolute';
   node.style.left = `${x}px`;

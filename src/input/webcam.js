@@ -78,11 +78,31 @@ export class TrackingService {
     this._lastTrackedAt = null;
     this._lostFrames = 0;
     this._fpsTimes = [];
+    this._preferredIndex = null;
   }
 
   get is_running() { return this._running; }
 
   snapshot() { return this._snapshot; }
+
+  // CAMERA INDEX setting (game/settings.py): null = the browser default.
+  setPreferredCamera(index) {
+    const value = index === null || index === undefined ? null : Number(index);
+    this._preferredIndex = Number.isFinite(value) ? value : null;
+  }
+
+  async _videoConstraints() {
+    const index = this._preferredIndex;
+    if (index !== null && navigator.mediaDevices.enumerateDevices) {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter((device) => device.kind === 'videoinput');
+        const pick = cameras[index];
+        if (pick && pick.deviceId) return { deviceId: { exact: pick.deviceId } };
+      } catch (_e) { /* fall back to the default camera */ }
+    }
+    return { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } };
+  }
 
   async start() {
     if (this._running) return;
@@ -95,7 +115,7 @@ export class TrackingService {
         throw new Error('camera not available in this browser');
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        video: await this._videoConstraints(),
         audio: false,
       });
       this._stream = stream;
@@ -263,6 +283,9 @@ export class WebcamInput {
 
   get preferred_arm() { return this._detector.preferred_arm; }
   setPreferredArm(arm) { this._detector.setPreferredArm(arm); this._detector.reset(); }
+  setPreferredCamera(index) {
+    if (this._service.setPreferredCamera) this._service.setPreferredCamera(index);
+  }
   cyclePreferredArm() {
     const order = ['auto', 'right', 'left'];
     const current = this.preferred_arm;

@@ -30,6 +30,9 @@ webcam_swing.log
 strike-lab_*.jpg
 strike-lab_*.png
 
+# Snapshots captured by the in-page audit (tools/snapshot.js -> tools/snap_server.py)
+/snaps/
+
 # Runtime log written by the packaged executable
 hells_balls.log
 

@@ -24,6 +24,7 @@ import * as celebrate from '../src/motion/celebrate.js';
 import { Motion, Tween } from '../src/motion/tween.js';
 import * as ease from '../src/motion/ease.js';
 import { keyToCharacter } from '../src/ui/theme.js';
+import { cardModel, frameBoxes, boxCountFor, normaliseMark, isBonusMark } from '../src/ui/cardmodel.js';
 import { BotPlanner } from '../src/game/bot.js';
 import * as config from '../src/config.js';
 
@@ -539,6 +540,141 @@ test('a planner completes and returns a candidate for a full rack', () => {
   assert.ok(throwData.speed >= config.MIN_THROW_SPEED);
   assert.ok(throwData.speed <= config.MAX_THROW_SPEED);
   assert.ok(bot.last_best_score >= 0);
+});
+
+// ---------------------------------------------------------------------------
+section('scorecard model (matches the scoring engine)');
+test('a fresh card has empty boxes and no totals', () => {
+  const score = new BowlingGame();
+  const view = cardModel(score);
+  for (let frame = 1; frame <= 10; frame++) {
+    assert.deepEqual(view.boxes[frame - 1], frame === 10 ? ['', '', ''] : ['', ''], `frame ${frame}`);
+    assert.equal(view.totals[frame - 1], null, `total ${frame}`);
+  }
+  assert.equal(view.official, 0);
+  assert.equal(view.currentFrame, 1);
+  assert.equal(view.complete, false);
+  assert.equal(isBonusMark(view.boxes[0][0]), false);
+});
+
+test('strikes and spares land in the right boxes', () => {
+  const score = new BowlingGame();
+  for (const roll of [10, 7, 3, 4, 5, 0, 3]) score.recordRoll(roll);
+  assert.deepEqual(frameBoxes(score, 1), ['X', '']);
+  assert.deepEqual(frameBoxes(score, 2), ['7', '/']);
+  assert.deepEqual(frameBoxes(score, 3), ['4', '5']);
+  assert.deepEqual(frameBoxes(score, 4), ['-', '3']);   // 0 prints as a miss
+  assert.deepEqual(frameBoxes(score, 5), ['', '']);
+  assert.equal(isBonusMark(frameBoxes(score, 2)[1]), true);
+  assert.equal(isBonusMark(frameBoxes(score, 3)[1]), false);
+});
+
+test('a zero followed by a ten is a spare, not a strike', () => {
+  // The engine scores any two rolls summing to ten as a spare, which is correct
+  // USBC behaviour; the card has to show the same thing. The frame total stays
+  // blank until the spare's bonus roll has been bowled.
+  const score = new BowlingGame();
+  for (const roll of [0, 10]) score.recordRoll(roll);
+  assert.deepEqual(frameBoxes(score, 1), ['-', '/']);
+  assert.equal(score.frameScore(1), null);
+  score.recordRoll(7);
+  assert.equal(score.frameScore(1), 17);
+  assert.deepEqual(cardModel(score).totals.slice(0, 2), [17, null]);
+});
+
+test('a frame whose bonus rolls are outstanding shows marks but no total', () => {
+  const score = new BowlingGame();
+  for (const roll of [10, 10]) score.recordRoll(roll);
+  const view = cardModel(score);
+  assert.deepEqual(view.boxes[0], ['X', '']);
+  assert.deepEqual(view.boxes[1], ['X', '']);
+  assert.equal(view.totals[0], null, 'a strike still owes its two bonus rolls');
+  assert.equal(view.totals[1], null);
+  assert.equal(view.official, 0);
+});
+
+test('an open frame scores immediately', () => {
+  const score = new BowlingGame();
+  for (const roll of [10, 10, 3, 4]) score.recordRoll(roll);
+  const view = cardModel(score);
+  assert.deepEqual(view.boxes[2], ['3', '4']);
+  assert.deepEqual(view.totals.slice(0, 3), [23, 40, 47]);
+  assert.equal(view.official, 47);
+});
+
+test('running totals accumulate exactly as the engine computes them', () => {
+  const score = new BowlingGame();
+  for (const roll of [10, 7, 3, 4, 5, 10, 0, 0, 9, 1, 10]) score.recordRoll(roll);
+  const view = cardModel(score);
+  assert.deepEqual(view.totals.slice(0, 6), [20, 34, 43, 53, 53, 73]);
+  assert.deepEqual(view.totals.slice(6), [null, null, null, null]);
+  assert.equal(view.official, 73);
+});
+
+test('the tenth frame carries three boxes and its bonus balls', () => {
+  assert.equal(boxCountFor(10), 3);
+  assert.equal(boxCountFor(9), 2);
+  const blank = new BowlingGame();
+  for (const roll of Array(18).fill(0)) blank.recordRoll(roll);
+  assert.deepEqual(frameBoxes(blank, 10), ['', '', '']);
+  const open = new BowlingGame();
+  for (const roll of Array(18).fill(0).concat([4, 3])) open.recordRoll(roll);
+  assert.deepEqual(frameBoxes(open, 10), ['4', '3', '']);
+  const spare = new BowlingGame();
+  for (const roll of Array(18).fill(0).concat([6, 4, 8])) spare.recordRoll(roll);
+  assert.deepEqual(frameBoxes(spare, 10), ['6', '/', '8']);
+  const turkey = new BowlingGame();
+  for (const roll of Array(18).fill(0).concat([10, 10, 10])) turkey.recordRoll(roll);
+  assert.deepEqual(frameBoxes(turkey, 10), ['X', 'X', 'X']);
+  assert.equal(turkey.is_complete, true);
+});
+
+test('a completed card reports the final score and no current frame', () => {
+  const perfect = new BowlingGame();
+  for (const roll of Array(12).fill(10)) perfect.recordRoll(roll);
+  const view = cardModel(perfect);
+  assert.equal(view.complete, true);
+  assert.equal(view.currentFrame, null);
+  assert.equal(view.final, 300);
+  assert.equal(view.official, 300);
+  assert.deepEqual(view.totals, [30, 60, 90, 120, 150, 180, 210, 240, 270, 300]);
+  for (let frame = 1; frame <= 9; frame++) assert.deepEqual(view.boxes[frame - 1], ['X', '']);
+  assert.deepEqual(view.boxes[9], ['X', 'X', 'X']);
+});
+
+test('the current frame tracks the engine while a game is in progress', () => {
+  const score = new BowlingGame();
+  const frames = [];
+  for (const roll of [10, 7, 3, 4, 5, 10, 10, 2, 8, 9]) {
+    frames.push(cardModel(score).currentFrame);
+    score.recordRoll(roll);
+  }
+  assert.deepEqual(frames, [1, 2, 2, 3, 3, 4, 5, 6, 6, 7]);
+  assert.equal(cardModel(score).currentFrame, 7);
+  assert.equal(normaliseMark('0'), '-');
+  assert.equal(normaliseMark('X'), 'X');
+});
+
+test('every card box is filled only by a mark the engine actually produced', () => {
+  // A mixed game: random but valid rolls, checked box by box against the engine.
+  const score = new BowlingGame();
+  let guard = 0;
+  while (!score.is_complete && guard < 40) {
+    const standing = score.standingPins();
+    const pins = standing === null ? 0 : (guard % 4 === 0 ? standing : Math.min(standing, guard % 5));
+    score.recordRoll(pins);
+    guard += 1;
+  }
+  const view = cardModel(score);
+  for (let frame = 1; frame <= 10; frame++) {
+    const engineMarks = score.frameMarks(frame).map(normaliseMark);
+    const boxes = view.boxes[frame - 1];
+    assert.equal(boxes.length, boxCountFor(frame));
+    engineMarks.forEach((mark, i) => assert.equal(boxes[i], mark, `frame ${frame} box ${i}`));
+    for (let i = engineMarks.length; i < boxes.length; i++) assert.equal(boxes[i], '', `frame ${frame} box ${i} unplayed`);
+  }
+  assert.equal(view.official, score.current_score);
+  assert.equal(view.final, score.total_score);
 });
 
 // ---------------------------------------------------------------------------

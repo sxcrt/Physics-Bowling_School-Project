@@ -1,6 +1,6 @@
 // The Equation Mode challenge panel (ported from ui/challenge_panel.py).
 import { COLORS, TYPE_PX, SIZES, css, cssA, wrapText, LAYOUT } from './theme.js';
-import { div, el, button as makeButton } from './dom.js';
+import { div, el, button as makeButton, fitLines } from './dom.js';
 import { drawLaneDiagram } from './diagram.js';
 
 const GREEN = [120, 230, 120];
@@ -9,6 +9,7 @@ const RED = [240, 110, 110];
 const GRAY = [186, 194, 214];
 const WHITE = [242, 242, 248];
 const CYAN = COLORS.cyan;
+const LINE_GAP = 6;
 
 export function makeChallengeView(data = {}) {
   return {
@@ -22,6 +23,10 @@ export class ChallengePanel {
   constructor(parent) {
     this.root = div('challenge-panel', parent);
     this.root.style.position = 'absolute';
+    this.root.style.left = '0';
+    this.root.style.top = '0';
+    this.root.style.width = '1280px';
+    this.root.style.height = '720px';
     this.root.style.display = 'none';
     this.visible = false;
     this.on_primary = null;
@@ -135,7 +140,6 @@ export class ChallengePanel {
     const TOP = SIZES.challenge_y;
     const PAD = SIZES.challenge_pad;
     const GAP = SIZES.challenge_gap;
-    const LINE_GAP = 6;
     const DIAGRAM_W = SIZES.challenge_diagram_w;
     const DIAGRAM_H = SIZES.challenge_diagram_h;
     const contentW = W - 2 * PAD;
@@ -144,57 +148,107 @@ export class ChallengePanel {
     const maxBottom = 720 - LAYOUT.margin_bottom;
     const marking = view.result !== null || !!view.solution;
     const solved = !!(view.result && view.result.solved);
-
     const headerH = SIZES.challenge_header + 6;
+
+    // ==== measure ==========================================================
     this.heading.textContent = view.progress.toUpperCase();
-    this.heading.style.left = `${left}px`; this.heading.style.top = `${TOP + PAD}px`;
     this.caseLabel.textContent = challenge.case || '';
-    this.caseLabel.style.left = `${right}px`; this.caseLabel.style.top = `${TOP + PAD}px`;
-
-    let y = TOP + PAD + headerH + 4;
     this.title.textContent = challenge.title;
-    this.title.style.left = `${left}px`; this.title.style.top = `${y}px`;
-    y += SIZES.challenge_title + 8;
+    this.title.style.maxWidth = `${contentW}px`;
+    const titleH = this.title.offsetHeight || SIZES.challenge_title;
 
-    this.brief.textContent = challenge.brief;
-    this.brief.style.left = `${left}px`; this.brief.style.top = `${y}px`;
     this.brief.style.maxWidth = `${contentW - DIAGRAM_W - GAP}px`;
-    this.brief.style.maxHeight = `${SIZES.challenge_body * 4 * 1.3 + 4}px`;
-    this.brief.style.overflow = 'hidden';
+    fitLines(this.brief, challenge.brief || '', 4);
+    const briefH = this.brief.offsetHeight;
+
+    this.targetLabel.textContent = 'YOUR TASK';
+    const labelW = this.targetLabel.offsetWidth + 12;
+    this.target.textContent = challenge.target;
+    this.target.style.maxWidth = `${contentW - labelW}px`;
+    const targetH = Math.max(this.targetLabel.offsetHeight, this.target.offsetHeight);
+
+    const givenText = (challenge.given || []).map(([n, v]) => `${n} = ${v}`).join('    ') || challenge.assumptions || '';
+    this.given.textContent = givenText;
+    this.given.style.maxWidth = `${contentW}px`;
+    const givenH = this.given.offsetHeight;
+
+    let eqText = challenge.equation || '';
+    if (challenge.equation_note) eqText = eqText ? `${eqText}\n${challenge.equation_note}` : challenge.equation_note;
+    this.equation.textContent = eqText;
+    this.equation.style.maxWidth = `${contentW}px`;
+    const eqH = this.equation.offsetHeight;
+
+    const fieldH = SIZES.challenge_input_h;
+    const buttonW = SIZES.challenge_button_w;
+    const mainH = Math.max(briefH, DIAGRAM_H);
+    const headlineReserve = (marking || view.error) ? (TYPE_PX.heading + LINE_GAP) : 0;
+    const budget = maxBottom - TOP - 2 * PAD;
+    const fixed = headerH + 4 + titleH + 8 + mainH + 12 + targetH + 10
+      + SIZES.challenge_header + 4 + givenH + 10
+      + SIZES.challenge_header + 4 + eqH + 12 + fieldH;
+    const available = Math.max(0, budget - fixed - headlineReserve);
+
+    // ==== feedback entries (capped to the room left) =======================
+    const entries = this._feedbackEntries(view, contentW, available);
+    let used = 0;
+    entries.forEach(([, , spriteH], i) => { used += spriteH + (i ? LINE_GAP : 0); });
+
+    const footerText = this._footerText(view, solved, marking);
+    this.footer.textContent = footerText;
+    this.footer.style.maxWidth = `${contentW}px`;
+    this.footer.style.display = footerText ? 'block' : 'none';
+    const footerH = footerText ? this.footer.offsetHeight : 0;
+    this.body.style.left = `${640 - W / 2}px`;
+    this.body.style.top = `${TOP}px`;
+    this.body.style.width = `${W}px`;
+    this.body.style.height = '120px';
+
+    // ==== place ============================================================
+    let y = TOP + PAD;
+    const headerMid = y + headerH / 2;
+    this.heading.style.left = `${left}px`;
+    this.heading.style.top = `${headerMid - this.heading.offsetHeight / 2}px`;
+    this.caseLabel.style.left = `${right}px`;
+    this.caseLabel.style.top = `${headerMid - this.caseLabel.offsetHeight / 2}px`;
+    const ruleLeft = left + (this.heading.offsetWidth || 80) + 16;
+    const caseW = challenge.case ? (this.caseLabel.offsetWidth || 0) : 0;
+    const ruleRight = right - (caseW + 16);
+    if (ruleRight > ruleLeft + 16) {
+      this.headRule.style.display = 'block';
+      this.headRule.style.left = `${ruleLeft}px`;
+      this.headRule.style.top = `${headerMid}px`;
+      this.headRule.style.width = `${ruleRight - ruleLeft}px`;
+      this.headRule.style.height = '1px';
+    } else this.headRule.style.display = 'none';
+    y += headerH + 4;
+
+    this.title.style.left = `${left}px`; this.title.style.top = `${y}px`;
+    y += titleH + 8;
+
+    this.brief.style.left = `${left}px`; this.brief.style.top = `${y}px`;
     this.diagram.style.left = `${right - DIAGRAM_W}px`;
     this.diagram.style.top = `${y}px`;
     drawLaneDiagram(this.diagram, {
       pins: view.pins, path: view.path, startX: view.path.length ? view.path[0][0] : (challenge.fixed.position ?? 0),
       aimX: challenge.aimX(), solved, launched: view.launched, gutterX: view.gutter_x,
     });
-    y += DIAGRAM_H + 12;
+    y += mainH + 12;
 
     this.targetLabel.style.left = `${left}px`; this.targetLabel.style.top = `${y}px`;
-    const labelW = this.targetLabel.offsetWidth + 12;
-    this.target.textContent = challenge.target;
     this.target.style.left = `${left + labelW}px`; this.target.style.top = `${y}px`;
-    this.target.style.maxWidth = `${contentW - labelW}px`;
-    y += SIZES.challenge_header + 10;
+    y += targetH + 10;
 
     this.givenLabel.style.left = `${left}px`; this.givenLabel.style.top = `${y}px`;
     y += SIZES.challenge_header + 4;
-    const givenText = challenge.given.map(([n, v]) => `${n} = ${v}`).join('    ') || challenge.assumptions;
-    this.given.textContent = givenText;
     this.given.style.left = `${left}px`; this.given.style.top = `${y}px`;
-    this.given.style.maxWidth = `${contentW}px`;
-    y += SIZES.challenge_header + 10;
+    y += givenH + 10;
 
     this.equationLabel.style.left = `${left}px`; this.equationLabel.style.top = `${y}px`;
     y += SIZES.challenge_header + 4;
-    let eqText = challenge.equation || '';
-    if (challenge.equation_note) eqText = eqText ? eqText + '\n' + challenge.equation_note : challenge.equation_note;
-    this.equation.textContent = eqText;
     this.equation.style.left = `${left}px`; this.equation.style.top = `${y}px`;
-    this.equation.style.maxWidth = `${contentW}px`;
-    y += (eqText.includes('\n') ? SIZES.challenge_header * 3 : SIZES.challenge_header * 2) + 12;
+    y += eqH + 12;
 
-    const fieldH = SIZES.challenge_input_h;
-    const buttonW = SIZES.challenge_button_w;
+    // ==== input row ========================================================
     const fieldW = contentW - buttonW - 12;
     const interactive = !solved && !view.solution;
     const fieldY = y + fieldH / 2;
@@ -211,17 +265,19 @@ export class ChallengePanel {
       this.field.style.display = 'block';
       this.fieldLabel.style.display = 'none';
       this.field.textContent = text;
-      this.field.style.left = `${left + pad}px`; this.field.style.top = `${fieldY}px`;
+      this.field.style.left = `${left + pad}px`;
+      this.field.style.top = `${fieldY - this.field.offsetHeight / 2}px`;
       this.field.style.color = marking ? css(AMBER) : css(WHITE);
       this.unitLabel.style.display = 'block';
       this.unitLabel.textContent = challenge.control.unit;
       this.unitLabel.style.left = `${left + pad + this.field.offsetWidth + 8}px`;
-      this.unitLabel.style.top = `${fieldY}px`;
+      this.unitLabel.style.top = `${fieldY - this.unitLabel.offsetHeight / 2}px`;
     } else {
       this.field.style.display = 'none';
       this.fieldLabel.style.display = 'block';
       this.fieldLabel.textContent = `${challenge.control.label}  (${challenge.control.unit})`;
-      this.fieldLabel.style.left = `${left + pad}px`; this.fieldLabel.style.top = `${fieldY}px`;
+      this.fieldLabel.style.left = `${left + pad}px`;
+      this.fieldLabel.style.top = `${fieldY - this.fieldLabel.offsetHeight / 2}px`;
       this.unitLabel.style.display = 'none';
     }
     this.caret.style.display = (interactive && view.caret) ? 'block' : 'none';
@@ -243,80 +299,80 @@ export class ChallengePanel {
     this.solutionButton.style.left = `${buttonX - buttonW / 2 - 12 - buttonW}px`;
     this.solutionButton.style.top = `${fieldY - SIZES.challenge_button_h / 2}px`;
 
+    // ==== feedback ==========================================================
     y += fieldH + LINE_GAP;
-    const entries = this._feedbackEntries(view, contentW);
+    this.feedbackHeadline.style.display = 'none';
     if (view.error) {
       this.feedbackHeadline.style.display = 'block';
       this.feedbackHeadline.textContent = view.error;
       this.feedbackHeadline.style.color = css(RED);
       this.feedbackHeadline.style.left = `${left}px`; this.feedbackHeadline.style.top = `${y}px`;
-      y += TYPE_PX.heading + LINE_GAP;
+      y += this.feedbackHeadline.offsetHeight + LINE_GAP;
     } else if (marking) {
       this.feedbackHeadline.style.display = 'block';
       const headline = view.result ? view.result.headline : 'WORKED SOLUTION';
       this.feedbackHeadline.textContent = headline;
       this.feedbackHeadline.style.color = css(solved ? GREEN : RED);
       this.feedbackHeadline.style.left = `${left}px`; this.feedbackHeadline.style.top = `${y}px`;
-      y += TYPE_PX.heading + LINE_GAP;
-    } else this.feedbackHeadline.style.display = 'none';
+      y += this.feedbackHeadline.offsetHeight + LINE_GAP;
+    }
 
-    for (const [sprite, colour] of entries) {
+    for (const [sprite, colour, spriteH] of entries) {
       sprite.style.display = 'block';
-      sprite.textContent = (sprite._text || '');
       sprite.style.color = css(colour);
       sprite.style.left = `${left}px`; sprite.style.top = `${y}px`;
-      sprite.style.maxWidth = `${contentW}px`;
-      y += (sprite._h || 16) + LINE_GAP;
+      y += spriteH + LINE_GAP;
     }
     for (const sprite of this.feedbackLines.slice(entries.length)) sprite.style.display = 'none';
 
-    const footerText = this._footerText(view, solved, marking);
     this.footer.style.display = footerText ? 'block' : 'none';
     if (footerText) {
-      this.footer.textContent = footerText;
       this.footer.style.left = `${left}px`; this.footer.style.top = `${y}px`;
-      this.footer.style.maxWidth = `${contentW}px`;
-      y += TYPE_PX.label + LINE_GAP;
     }
-    const height = Math.min(maxBottom - TOP, y - TOP + PAD);
-    this.body.style.left = `${640 - W / 2}px`;
-    this.body.style.top = `${TOP}px`;
-    this.body.style.width = `${W}px`;
+    // The plate must contain everything that was placed (the size the original
+    // computes up front; computing it from the final cursor is exact).
+    const contentBottom = footerText
+      ? y + this.footer.offsetHeight
+      : y - (entries.length ? LINE_GAP : 0);
+    const height = Math.max(120, Math.min(maxBottom - TOP, contentBottom + PAD - TOP));
     this.body.style.height = `${height}px`;
   }
 
-  _feedbackEntries(view, contentW) {
+  _feedbackEntries(view, contentW, available) {
     const entries = [];
+    let lines = [];
     if (view.solution) {
-      const lines = wrapText(view.solution, 118).slice(0, 4);
-      for (const chunk of lines) {
-        const sprite = this.feedbackLines[entries.length];
-        sprite._text = `Worked solution: ${chunk}`; sprite._h = 16;
-        entries.push([sprite, GRAY]);
-      }
+      lines = wrapText(view.solution, 118).slice(0, 4).map((chunk) => [`Worked solution: ${chunk}`, GRAY]);
     } else if (view.result) {
       const outcome = view.result;
-      const lines = outcome.lines.slice();
+      lines = outcome.lines.map((line) => [line, GRAY]);
       if (view.challenge.control.key === 'torque' && view.input_text) {
         const value = parseFloat(view.input_text);
         if (!Number.isNaN(value)) {
           const derived = view.challenge.derivedText(value);
-          if (derived) lines.splice(1, 0, derived);
+          if (derived) lines.splice(1, 0, [derived, CYAN]);
         }
       }
-      lines.forEach((text) => {
-        const sprite = this.feedbackLines[entries.length];
-        sprite._text = text; sprite._h = 16;
-        entries.push([sprite, GRAY]);
-      });
       const steps = view.challenge.steps || [];
       for (let i = 0; i < Math.min(view.hints_unlocked, steps.length); i++) {
-        const sprite = this.feedbackLines[entries.length];
-        sprite._text = `Step ${i + 1}:  ${steps[i]}`; sprite._h = 16;
-        entries.push([sprite, AMBER]);
+        lines.push([`Step ${i + 1}:  ${steps[i]}`, AMBER]);
       }
     }
-    // Torque derived line colour when inserted.
+    let used = 0;
+    for (const [text, colour] of lines) {
+      if (entries.length >= this.feedbackLines.length) break;
+      const sprite = this.feedbackLines[entries.length];
+      // The sprite may still be hidden from the previous frame; offsetHeight is
+      // 0 for a display:none element, so show it before measuring the line.
+      sprite.style.display = 'block';
+      sprite.style.maxWidth = `${contentW}px`;
+      fitLines(sprite, text, 2);
+      const spriteH = sprite.offsetHeight || 16;
+      const extra = spriteH + (entries.length ? LINE_GAP : 0);
+      if (entries.length && used + extra > available) break;
+      used += extra;
+      entries.push([sprite, colour, spriteH]);
+    }
     return entries;
   }
 

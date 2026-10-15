@@ -1,0 +1,34 @@
+# Everything the deployed site needs lives in index.html, src/ and assets/.
+# The original Python game, the fidelity tools and the documentation are not part
+# of the browser build, so they are not uploaded.
+__pycache__/
+.pytest_cache/
+/build/
+/dist/
+/dist-apps/
+*.py
+*.pyc
+*.spec
+*.log
+requirements.txt
+setup.py
+settings.json
+
+# The Python packages of the original game (the browser build is src/)
+/avatar/
+/game/
+/input/
+/motion/
+/scene/
+/tracking/
+/ui/
+/tests/
+/tools/
+/docs/
+/snaps/
+
+# Verification output that lives in the repository root
+pytest_*.log
+webcam_swing.log
+strike-lab_*.jpg
+strike-lab_*.png

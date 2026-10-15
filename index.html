@@ -33,17 +33,45 @@
   .ui-label, .ui-button, .screen, .hud, .overlay { font-family: inherit; }
   .ui-button { transition: filter 0.08s ease; }
   .screen { pointer-events: auto; }
+  /* Boot notice: visible until src/main.js takes over, and left on screen with a
+     readable explanation if a module (the CDN copy of three.js, most likely)
+     fails to load, instead of a blank stage. */
   #loading {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    font-size: 18px; letter-spacing: 3px; color: #96eeff;
+    position: absolute; left: 0; top: 0; width: 1280px; height: 720px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; z-index: 999;
   }
+  #loading .boot-title { font-size: 22px; font-weight: 800; letter-spacing: 4px; color: #96eeff; }
+  #loading .boot-note { font-size: 15px; line-height: 1.6; max-width: 720px; color: #cfcbea; white-space: pre-wrap; }
+  #loading .boot-note[hidden] { display: none; }
 </style>
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    "three": "./vendor/three/three.module.js"
   }
 }
+</script>
+<script>
+  // If the module graph cannot load there is no game to show, so say so.
+  (function () {
+    var note = null;
+    function explain(message) {
+      if (!note) note = document.querySelector('#loading .boot-note');
+      if (!note) return;
+      note.hidden = false;
+      note.textContent = String(message);
+    }
+    window.addEventListener('error', function (event) {
+      var target = event && event.target;
+      if (target && target.tagName === 'SCRIPT') explain('Could not load ' + (target.src || 'a script') + '.');
+      else if (event && event.message) explain(event.message);
+    }, true);
+    window.addEventListener('unhandledrejection', function (event) {
+      var reason = event && event.reason;
+      explain((reason && (reason.message || reason)) || 'The game failed to start.');
+    });
+  }());
 </script>
 </head>
 <body>
@@ -51,6 +79,10 @@
     <div id="stage">
       <div id="canvas-host"></div>
       <div id="ui-root"></div>
+      <div id="loading">
+        <div class="boot-title">HELLS BALLS</div>
+        <div class="boot-note" hidden></div>
+      </div>
     </div>
   </div>
   <script type="module" src="src/main.js"></script>

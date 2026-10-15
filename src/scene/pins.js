@@ -3,20 +3,30 @@ import * as THREE from 'three';
 import * as config from '../config.js';
 import { Deck, PinPhysics, rackPositions } from '../physics.js';
 import { scene } from './renderer.js';
-import { softLightingMaterial } from './shader.js';
-import { buildPinGeometry } from './geometry.js';
-import { pinTexture } from './textures.js';
+import { contactMaterial, softLightingMaterial } from './shader.js';
+import { buildPinGeometry, discGeometry } from './geometry.js';
+import { contactTexture, pinTexture } from './textures.js';
+import { enableShadows } from './shadow.js';
 
 export function pinPositions() { return rackPositions(); }
 
 let _sharedGeometry = null;
 let _sharedTexture = null;
+let _contactGeometry = null;
+let _contactMap = null;
+
+const CONTACT_RADIUS = 0.105;
+const CONTACT_ALPHA = 0.58;
 
 export class Pin {
   constructor(x, z) {
     if (!_sharedGeometry) _sharedGeometry = buildPinGeometry();
     if (!_sharedTexture) _sharedTexture = pinTexture();
-    this.mesh = new THREE.Mesh(_sharedGeometry, softLightingMaterial(_sharedTexture));
+    if (!_contactMap) _contactMap = contactTexture(64, 0.34, 2.0);
+    this.mesh = new THREE.Mesh(_sharedGeometry, softLightingMaterial(_sharedTexture, 0xffffff, {
+      shadowStrength: 0.86, ambientBoost: 0.22,
+    }));
+    enableShadows(this.mesh, { cast: true, receive: true });
     this.base_position = [x, 0.0, z];
     this.physics = new PinPhysics();
     this.physics.setBase(x, z);
@@ -26,6 +36,13 @@ export class Pin {
     this.mesh.rotation.order = 'XYZ';
     this.mesh.position.set(x, config.PIN_HEIGHT / 2.0, z);
     scene.add(this.mesh);
+
+    if (!_contactGeometry) _contactGeometry = discGeometry(CONTACT_RADIUS, 20);
+    this.contact = new THREE.Mesh(_contactGeometry, contactMaterial(_contactMap, CONTACT_ALPHA));
+    // discGeometry already lies flat in the XZ plane (normal +Y).
+    this.contact.position.set(x, 0.0030, z);
+    this.contact.renderOrder = 1;
+    scene.add(this.contact);
   }
 
   reset() {
@@ -38,6 +55,24 @@ export class Pin {
     this.fx_visible = true;
     this.mesh.scale.set(1, 1, 1);
     this.mesh.visible = true;
+    this.contact.position.set(this.base_position[0], 0.0030, this.base_position[2]);
+    this.contact.visible = true;
+    this.contact.material.opacity = CONTACT_ALPHA;
+  }
+
+  _syncContact() {
+    const physics = this.physics;
+    const [bx, bz] = physics.base;
+    const contact = this.contact;
+    contact.position.set(bx, 0.0030, bz);
+    // The blob is the pin's footprint while it stands; it fades out as the pin
+    // tips over (the shadow map carries the fallen pin from then on).
+    const tilt = Math.min(1.0, Math.abs(physics.angle) / (Math.PI / 4));
+    const gone = physics.removed || !this.mesh.visible;
+    const alpha = CONTACT_ALPHA * (1.0 - tilt) * this.fx_scale;
+    contact.visible = !gone && alpha > 0.01;
+    contact.material.opacity = Math.max(0.0, alpha);
+    contact.scale.setScalar(Math.max(0.4, 1.0 + 0.35 * tilt));
   }
 
   update() {
@@ -54,6 +89,7 @@ export class Pin {
     }
     if (this.fx_scale !== 1.0) this.mesh.scale.set(this.fx_scale, this.fx_scale, this.fx_scale);
     this.mesh.visible = this.fx_visible && !physics.removed;
+    this._syncContact();
   }
 }
 
@@ -90,7 +126,7 @@ export class PinRack {
     }
     this.deck.setRack(positions);
     for (let index = 0; index < this.pins.length; index++) {
-      if (index >= positions.length) this.pins[index].mesh.visible = false;
+      if (index >= positions.length) { this.pins[index].mesh.visible = false; this.pins[index].contact.visible = false; }
     }
     this.deck._accumulator = 0.0;
     this.beginRoll();
@@ -100,7 +136,7 @@ export class PinRack {
 
   sweep() {
     for (const pin of this.pins) {
-      if (pin.physics.down) { pin.physics.removed = true; pin.mesh.visible = false; }
+      if (pin.physics.down) { pin.physics.removed = true; pin.mesh.visible = false; pin.contact.visible = false; }
     }
   }
 

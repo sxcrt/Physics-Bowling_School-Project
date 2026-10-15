@@ -3,24 +3,35 @@ import * as THREE from 'three';
 import * as config from '../config.js';
 import { BallPhysics } from '../physics.js';
 import { scene } from './renderer.js';
-import { unlitMaterial } from './shader.js';
+import { contactMaterial, surfaceMaterial } from './shader.js';
 import { discGeometry } from './geometry.js';
-import { ballTexture, glowTexture } from './textures.js';
+import { ballTexture, contactTexture } from './textures.js';
+import { enableShadows } from './shadow.js';
 
-const SHADOW_TEXTURE_ALPHA = 0.55;
-const SHADOW_RADIUS = config.BALL_RADIUS * 3.4;
+// The tight AO blob that sits directly under the ball. It is separate from the
+// cast shadow the shadow map produces: at a 45-ish degree key angle a sphere's
+// mapped shadow starts a centimetre or two away from its contact point, and this
+// is what closes that gap.
+const CONTACT_RADIUS = config.BALL_RADIUS * 2.6;
+const CONTACT_ALPHA = 0.62;
 
 export class Ball {
   constructor() {
     const geometry = new THREE.SphereGeometry(config.BALL_RADIUS, 48, 32);
-    this.mesh = new THREE.Mesh(geometry, unlitMaterial(0xffffff, ballTexture()));
+    this.mesh = new THREE.Mesh(geometry, surfaceMaterial({
+      map: ballTexture(), color: 0xffffff, specular: 0.42, specularPower: 42.0,
+      shadowStrength: 0.86,
+    }));
     this.mesh.position.set(0, config.BALL_RADIUS, config.FOUL_LINE_Z);
+    enableShadows(this.mesh, { cast: true, receive: true });
     scene.add(this.mesh);
 
-    this.shadow = new THREE.Mesh(discGeometry(SHADOW_RADIUS, 24),
-      unlitMaterial(0xffffff, glowTexture([6, 4, 10], 64, 1.6), { transparent: true, opacity: SHADOW_TEXTURE_ALPHA }));
-    this.shadow.position.set(0, 0.0025, config.FOUL_LINE_Z);
-    this.shadow.rotation.x = -Math.PI / 2;
+    this.shadow = new THREE.Mesh(discGeometry(CONTACT_RADIUS, 28),
+      contactMaterial(contactTexture(128, 0.46, 2.3), CONTACT_ALPHA));
+    // discGeometry already lies flat in the XZ plane (normal +Y); rotating it
+    // again would stand the decal on edge and make it invisible.
+    this.shadow.position.set(0, 0.0032, config.FOUL_LINE_Z);
+    this.shadow.renderOrder = 1;
     scene.add(this.shadow);
 
     this.physics = new BallPhysics();
@@ -57,7 +68,10 @@ export class Ball {
 
   _sync() {
     const physics = this.physics;
-    this.mesh.position.set(physics.x, config.BALL_RADIUS, physics.z);
+    // The gutter floor sits 0.06 m below the lane surface; dropping the mesh
+    // into it is what makes a gutter ball read as a gutter ball.
+    const drop = physics.in_gutter ? 0.06 : 0.0;
+    this.mesh.position.set(physics.x, config.BALL_RADIUS - drop, physics.z);
     // Orientation matrix -> quaternion (exact, no Euler ambiguity).
     const m = physics.orientation;
     const m4 = new THREE.Matrix4().set(
@@ -66,7 +80,8 @@ export class Ball {
       m[2][0], m[2][1], m[2][2], 0,
       0, 0, 0, 1);
     this.mesh.quaternion.setFromRotationMatrix(m4);
-    this.shadow.position.set(physics.x, 0.0025, physics.z);
+    this.shadow.position.set(physics.x, 0.0032, physics.z);
+    this.shadow.material.opacity = CONTACT_ALPHA * (physics.in_gutter ? 0.35 : 1.0);
   }
 
   update() {

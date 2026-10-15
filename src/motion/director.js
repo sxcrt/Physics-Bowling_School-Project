@@ -219,7 +219,10 @@ export class MotionDirector {
     pop.baseX = x; pop.baseY = y;
     pop.text = text; pop.rgb = rgb; pop.glow = glow;
     this.pops.setState(pop, { scale: MOTION.pinpop_slam, alpha: 0.0 });
-    const tag = 'pinpop';
+    // One tag per pop: a new pop must never cancel an older pop's timeline
+    // (that would leave the older one stuck on screen - motion/director.py
+    // tags with ('pinpop', id(pop))).
+    const tag = `pinpop-${this._pop_seq}`;
     this.motion.cancel(tag);
     const slam = MOTION.pinpop_time * 0.22;
     const life = Math.max(slam + 0.05, MOTION.pinpop_time);

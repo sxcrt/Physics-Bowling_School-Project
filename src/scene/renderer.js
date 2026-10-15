@@ -17,6 +17,11 @@ class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(REFERENCE_WIDTH, REFERENCE_HEIGHT, false);
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    // Real-time shadows: one directional shadow map, sampled with a wide soft
+    // kernel so pin and ball contact edges stay smooth rather than stair-stepped.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = true;
     this.renderer.setClearColor(new THREE.Color(
       config.WINDOW_BACKGROUND[0] / 255, config.WINDOW_BACKGROUND[1] / 255, config.WINDOW_BACKGROUND[2] / 255));
 

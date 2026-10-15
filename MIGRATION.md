@@ -34,7 +34,7 @@ An original motion-controlled 3D physics bowling game:
 
 | Concern | Original | Browser build | Why |
 | --- | --- | --- | --- |
-| 3D engine | Panda3D via Ursina | **Three.js** (ES module, jsDelivr import map) | The only realistic browser WebGL path; no build step needed. |
+| 3D engine | Panda3D via Ursina | **Three.js** (ES module, vendored in `vendor/three/`, resolved by an import map) | The only realistic browser WebGL path; no build step needed. |
 | App structure | Ursina entities + `main.py` hooks | ES modules + a `requestAnimationFrame` loop | Same shape: one update entry point, one input router. |
 | UI | Ursina `camera.ui` entities, Pillow-painted textures | **DOM + CSS** over the WebGL canvas, laid out on the same 1280×720 reference grid | CSS reproduces the neon glow, gradients, rounded plates and exact type sizes far more faithfully than hand-drawn textures, and gives real hit-testing. |
 | Physics | `physics.py` | `src/physics.js` — a line-by-line port | The simulation is the specification; nothing was re-derived. |
@@ -43,11 +43,30 @@ An original motion-controlled 3D physics bowling game:
 | Webcam pose | OpenCV + MediaPipe (Python) | **MediaPipe Tasks Vision** (`pose_landmarker_lite.task`, CDN WASM) | The same model and the same landmark set; `input/swing.py`'s detector is ported and unchanged. |
 | Deployment | `vercel.json` pointing at a static landing page | the repo root is the static site | No build step: ES modules + one import map. |
 
+### 2.1.1 Deployment shape
+
+The deployed artefact is the repository root served as static files:
+
+```
+index.html                 entry point (import map -> vendor/three, stage markup)
+vercel.json                framework:null, no build/install command, outputDirectory "."
+.vercelignore              the files Vercel does not upload (Python game, docs, tools)
+vendor/three/three.module.js   the vendored renderer (see 2.3.1)
+src/…                      the browser build
+assets/…                   audio WAVs and the pose-landmarker model
+```
+
+`tools/vercel_sim.py` serves exactly that file set with Vercel's
+`cleanUrls`/`trailingSlash` redirects and the same `Cache-Control` values, so the
+production artefact can be exercised locally before a deploy.
+
 ### 2.2 Layout
 
 ```
 index.html                 entry point (import map for three.js, stage markup)
 vercel.json                static deployment config
+.vercelignore              files Vercel does not upload
+vendor/three/              the vendored renderer (three r160)
 src/
   config.js                every game constant (port of config.py)
   physics.js               the rigid-body simulation (port of physics.py)
@@ -60,23 +79,27 @@ src/
     pointer.js  keyboard.js  mouse.js  swing.js  webcam.js
   scene/
     renderer.js  camera.js  lane.js  ball.js  pins.js  avatar.js
-    geometry.js  shader.js  textures.js
+    geometry.js  shader.js  textures.js  shadow.js
   motion/
     ease.js  tween.js  config.js  celebrate.js  effects.js  scene_fx.js
     director.js
   ui/
     theme.js  dom.js  screens.js  menu.js  hud.js  scorecard.js
+    fullscorecard.js  cardmodel.js
     overlays.js  lab.js  challenge_panel.js  diagram.js  webcam_panel.js
 assets/…                   unchanged (audio WAVs, pose model)
 ```
 
 ### 2.3 Key implementation decisions
 
-1. **No bundler.** The site is plain ES modules plus an import map for
-   `three`. This keeps the deployment a pure static upload, removes a build
-   step that could drift from the source, and makes the served code the code in
-   the repository. MediaPipe is imported from its CDN **only when webcam mode is
-   first entered**, so mouse-only play downloads nothing extra.
+1. **No bundler, no runtime CDN for the renderer.** The site is plain ES modules
+   plus an import map. `three.module.js` is **vendored in `vendor/three/`** rather
+   than fetched from jsDelivr: a bare CDN import means a third-party outage
+   blanks the production page (observed: a jsDelivr `502` while verifying), and an
+   import map value must be an absolute, `/`-rooted or `./`-relative URL, which
+   makes the vendored file the only form that is also sub-path safe. MediaPipe is
+   still imported from its CDN **only when webcam mode is first entered**, so
+   mouse-only play downloads nothing extra.
 
 2. **The physics port is exact.** `src/physics.js` mirrors `physics.py`
    statement for statement (same sub-step, same swept-circle test, same impulse
@@ -356,18 +379,42 @@ cannot be loaded from `file://`.)
 
 ### Vercel
 
-`vercel.json` deploys the repository root as a static site
-(`"framework": null`, `"outputDirectory": "."`). No build command runs.
+`vercel.json` deploys the repository root as a static site:
+
+```json
+{ "framework": null, "buildCommand": null, "installCommand": null,
+  "outputDirectory": ".", "cleanUrls": true, "trailingSlash": false, "headers": [...] }
+```
+
+No build step and no install step run: the repository *is* the site. `.vercelignore`
+keeps the original Python game, the docs and the verification tools out of the
+upload, so the deployed tree is `index.html`, `vercel.json`, `src/`, `vendor/`
+and `assets/` only.
 
 **Automatic deployments from GitHub:** import the repository in Vercel
 ("Add New… → Project"), pick the repository, and leave the framework preset on
 "Other"/"No framework". Vercel will then deploy every push to the production
 branch automatically and every pull request as a preview. There is nothing else
-to configure — no environment variables, no build settings.
+to configure — no environment variables, no build settings. This is the one step
+that has to be done in the Vercel dashboard; it cannot be performed from the
+repository.
+
+**Verifying the production artefact locally:**
+
+```
+python tools/vercel_sim.py 8130              # exactly the deployed file set
+python tools/vercel_sim.py 8130 --with-tools # the same, plus tools/ so the audit can load
+# then open http://127.0.0.1:8130/
+```
 
 ### Verification tools
 
 ```
+node   tools/js_tests.mjs                              # 72 logic regression tests
+python tools/serve.py 8124                             # then, in the page:
+#   (0, eval)(await (await fetch('/tools/browser_audit.js')).text())
+#   await window.hellsAuditRun()                       # 67 in-browser checks
+
 python tools/fidelity_dump.py  tools/physics_py.json   # original physics
 node   tools/fidelity_run.mjs  tools/physics_js.json   # browser physics
 node   tools/fidelity_compare.mjs tools/physics_py.json tools/physics_js.json
@@ -386,11 +433,18 @@ python tools/dump_facade.py                            # original facade stats
   same reason it was unverified in the original: no camera was available in this
   environment. The detector is a 1:1 port, and the failure path (no camera,
   tracking lost, mid-swing jump) is exercised.
-* **The DOM UI was verified structurally** (element presence, text, geometry,
-  real click routing) rather than by screenshot, because the test browser runs
-  headless. The 3D layer was verified visually against the original's
-  screenshots.
+* **The browser deployment is configured but not live-verified.** No Vercel
+  credentials or linked project exist in this environment, and the GitHub remote
+  is not reachable from it, so the repository-side configuration is complete and
+  the production file set is verified locally (`tools/vercel_sim.py`) but no
+  live URL has been checked.
+* **MediaPipe still comes from a CDN.** The webcam mode imports
+  `@mediapipe/tasks-vision` from jsDelivr on first use; the pose model itself
+  (`assets/models/pose_landmarker_lite.task`) is local. If that CDN is
+  unreachable the game reports "Webcam unavailable" and switches to mouse, which
+  is the same path a missing camera takes.
 * The original's Python test suite (378 tests) still applies to the Python
   code; it was not ported to JavaScript. The browser build's equivalent
-  assurance is the fidelity diff suite above, which compares the ported logic
-  against the Python originals directly.
+  assurance is the fidelity diff suite above plus `tools/js_tests.mjs` and the
+  in-page `tools/browser_audit.js`, which compare the ported logic against the
+  Python originals and drive the real page respectively.

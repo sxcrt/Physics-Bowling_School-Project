@@ -2,9 +2,10 @@ import * as THREE from 'three';
 // An original, procedurally built bowling character (ported from avatar/character.py).
 import * as config from '../config.js';
 import { scene } from './renderer.js';
-import { softLightingMaterial, unlitMaterial } from './shader.js';
+import { contactMaterial, softLightingMaterial, unlitMaterial } from './shader.js';
 import { discGeometry, lowPolySphereGeometry, taperedBoxGeometry } from './geometry.js';
-import { ballTexture, glowTexture } from './textures.js';
+import { ballTexture, contactTexture } from './textures.js';
+import { enableShadows } from './shadow.js';
 
 export const IDLE = 'idle';
 export const READY = 'ready';
@@ -87,8 +88,9 @@ export class Bowler {
     this.shirt_parts = [];
 
     const part = (parent, geometry, rgb, pos = [0, 0, 0]) => {
-      const mesh = new THREE.Mesh(geometry, softLightingMaterial(null, col(rgb)));
+      const mesh = new THREE.Mesh(geometry, softLightingMaterial(null, col(rgb), { shadowStrength: 0.82, ambientBoost: 0.16 }));
       mesh.position.set(...pos);
+      enableShadows(mesh, { cast: true, receive: true });
       parent.add(mesh);
       return mesh;
     };
@@ -172,25 +174,30 @@ export class Bowler {
     this.right_elbow.position.set(0, -0.32, 0);
     this.right_shoulder.add(this.right_elbow);
     for (const [side, elbow] of [['left', this.left_elbow], ['right', this.right_elbow]]) {
-      part(elbow, taperedBoxGeometry([0.082, 0.086], [0.098, 0.102], 0.200, 0.018, true), skin, [0, 0.012, 0]);
-      const hand = part(elbow, lowPolySphereGeometry(0.058, 4, 8, [0.85, 1.15, 0.95]), skin, [0, -0.225, 0.004]);
+      // The forearm has to reach back up past the elbow ball into the sleeve:
+      // a 0.20 m forearm left a visible gap where the arm appeared to float.
+      part(elbow, taperedBoxGeometry([0.082, 0.086], [0.098, 0.102], 0.30, 0.018, true), skin, [0, 0.012, 0]);
+      const hand = part(elbow, lowPolySphereGeometry(0.058, 4, 8, [0.85, 1.15, 0.95]), skin, [0, -0.300, 0.004]);
       part(hand, taperedBoxGeometry([0.032, 0.046], [0.026, 0.040], 0.050, 0.010, true), skin,
         [side === 'right' ? 0.042 : -0.042, 0.018, 0.008]);
     }
 
     // ball
     this.ball = new THREE.Mesh(new THREE.SphereGeometry(config.BALL_DIAMETER / 2, 32, 24),
-      unlitMaterial(0xffffff, ballTexture()));
+      softLightingMaterial(ballTexture(), 0xffffff, { specular: 0.34, specularPower: 42.0 }));
+    enableShadows(this.ball, { cast: true, receive: true });
     this.ball.position.set(0.30, 0.24, 0.26);
     this.ball.visible = false;
     this.root.add(this.ball);
 
     // shadow
-    this.shadow = new THREE.Mesh(discGeometry(0.42, 20),
-      unlitMaterial(0xffffff, glowTexture([6, 4, 10], 64, 1.6), { transparent: true, opacity: SHADOW_ALPHA }));
+    this.shadow = new THREE.Mesh(discGeometry(0.42, 24),
+      contactMaterial(contactTexture(128, 0.30, 2.0), SHADOW_ALPHA));
+    // discGeometry already lies flat in the XZ plane (normal +Y); rotating it
+    // again would stand the decal on edge and make it invisible.
     this.shadow.position.set(0, 0.004, 0);
-    this.shadow.rotation.x = -Math.PI / 2;
-    this.shadow.scale.set(2.3, 1.0, 1.5);
+    this.shadow.scale.set(1.9, 1.0, 1.35);
+    this.shadow.renderOrder = 1;
     this.root.add(this.shadow);
 
     this._applyPose(this._pose);

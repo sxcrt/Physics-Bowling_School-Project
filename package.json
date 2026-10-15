@@ -3,5 +3,10 @@
   "private": true,
   "type": "module",
   "version": "1.0.0",
-  "description": "Hells Balls - browser build (static, no bundler)."
+  "description": "Hells Balls - browser build (static, no bundler).",
+  "scripts": {
+    "serve": "python tools/serve.py 8124",
+    "test": "node tools/js_tests.mjs",
+    "fidelity": "node tools/fidelity_run.mjs tools/physics_js.json && node tools/fidelity_compare.mjs tools/physics_py.json tools/physics_js.json && node tools/fidelity_run2.mjs tools/logic_js.json && node tools/fidelity_compare2.mjs tools/logic_py.json tools/logic_js.json"
+  }
 }
