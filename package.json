@@ -1,0 +1,7 @@
+{
+  "name": "hells-balls-web",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Hells Balls - browser build (static, no bundler)."
+}

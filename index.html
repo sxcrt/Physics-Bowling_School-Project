@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hells Balls — 3D Physics Bowling</title>
+<meta name="description" content="Hells Balls is an original motion-controlled 3D physics bowling game: a real rigid-body simulation, USBC ten-frame scoring, six game modes, mouse and webcam input.">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #05060f; overflow: hidden;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: #f5f5fc;
+  }
+  #viewport {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(1200px 700px at 50% 0%, #12143c 0%, #05060f 70%);
+  }
+  #stage {
+    position: relative; width: 1280px; height: 720px;
+    /* Never let flex shrink the box: the stage is scaled as a whole to fit
+       the window (see App._fitStage), so its layout size stays 1280x720. */
+    flex: none;
+    transform-origin: center center;
+    background: #0c0e2c; overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  }
+  #canvas-host { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; }
+  #canvas-host canvas { display: block; width: 1280px !important; height: 720px !important; }
+  #ui-root { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; }
+  .ui-label, .ui-button, .screen, .hud, .overlay { font-family: inherit; }
+  .ui-button { transition: filter 0.08s ease; }
+  .screen { pointer-events: auto; }
+  #loading {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    font-size: 18px; letter-spacing: 3px; color: #96eeff;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="viewport">
+    <div id="stage">
+      <div id="canvas-host"></div>
+      <div id="ui-root"></div>
+    </div>
+  </div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

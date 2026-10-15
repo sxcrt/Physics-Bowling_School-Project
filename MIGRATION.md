@@ -1,0 +1,396 @@
+# Hells Balls — browser migration
+
+This document records how the original native **Ursina / Panda3D** game was
+migrated into a **browser game** that runs from a URL and deploys to Vercel,
+what was preserved, how it was verified, and where it necessarily differs.
+
+The original Python project is **still in the repository, untouched**
+(`main.py`, `physics.py`, `scene/`, `ui/`, `tests/`, …). The browser build is a
+new, parallel source tree under `src/` plus `index.html`; nothing in the Python
+game was modified or deleted.
+
+---
+
+## 1. What the original is
+
+An original motion-controlled 3D physics bowling game:
+
+* a real rigid-body bowling simulation (`physics.py`: sphere with skid / roll /
+  hook, pins as toppling + sliding rods, impulse collisions with restitution,
+  kickback walls, the pit) on a fixed 1/240 s sub-step clock;
+* USBC ten-frame scoring (`scoring.py`);
+* six modes (`game/modes.py`, `game/session.py`): Classic Bowling, Physics
+  Trivia, Equation Challenge, Player vs Bot, Local Multiplayer (2–4), BowlRush;
+* mouse input and webcam (MediaPipe pose) input producing the same `ThrowData`
+  (`input/`);
+* a procedural bowler avatar (`avatar/character.py`), a Physics Lab
+  (`ui/lab_screen.py`), a neon UI design system (`ui/theme.py`), an animation
+  system (`motion/`), and audio synthesised with the Python stdlib
+  (`game/audio.py`).
+
+## 2. The browser build
+
+### 2.1 Technology
+
+| Concern | Original | Browser build | Why |
+| --- | --- | --- | --- |
+| 3D engine | Panda3D via Ursina | **Three.js** (ES module, jsDelivr import map) | The only realistic browser WebGL path; no build step needed. |
+| App structure | Ursina entities + `main.py` hooks | ES modules + a `requestAnimationFrame` loop | Same shape: one update entry point, one input router. |
+| UI | Ursina `camera.ui` entities, Pillow-painted textures | **DOM + CSS** over the WebGL canvas, laid out on the same 1280×720 reference grid | CSS reproduces the neon glow, gradients, rounded plates and exact type sizes far more faithfully than hand-drawn textures, and gives real hit-testing. |
+| Physics | `physics.py` | `src/physics.js` — a line-by-line port | The simulation is the specification; nothing was re-derived. |
+| Scoring / modes / session / questions / challenges / bot | Python modules | `src/game/*.js` — line-by-line ports | Pure logic, no engine dependency in either version. |
+| Audio | stdlib-synthesised WAVs in `assets/audio/` | the **same WAV files**, played through the Web Audio API | The files are the original synthesiser's exact output, so the sound is bit-identical; the browser cannot run the Python synthesiser, so shipping its output is the faithful choice. |
+| Webcam pose | OpenCV + MediaPipe (Python) | **MediaPipe Tasks Vision** (`pose_landmarker_lite.task`, CDN WASM) | The same model and the same landmark set; `input/swing.py`'s detector is ported and unchanged. |
+| Deployment | `vercel.json` pointing at a static landing page | the repo root is the static site | No build step: ES modules + one import map. |
+
+### 2.2 Layout
+
+```
+index.html                 entry point (import map for three.js, stage markup)
+vercel.json                static deployment config
+src/
+  config.js                every game constant (port of config.py)
+  physics.js               the rigid-body simulation (port of physics.py)
+  scoring.js               USBC ten-pin scoring (port of scoring.py)
+  main.js                  the App: screens, settings, audio, input routing
+  game/
+    modes.js  session.js  settings.js  questions.js  challenges.js
+    bot.js  audio.js  play.js
+  input/
+    pointer.js  keyboard.js  mouse.js  swing.js  webcam.js
+  scene/
+    renderer.js  camera.js  lane.js  ball.js  pins.js  avatar.js
+    geometry.js  shader.js  textures.js
+  motion/
+    ease.js  tween.js  config.js  celebrate.js  effects.js  scene_fx.js
+    director.js
+  ui/
+    theme.js  dom.js  screens.js  menu.js  hud.js  scorecard.js
+    overlays.js  lab.js  challenge_panel.js  diagram.js  webcam_panel.js
+assets/…                   unchanged (audio WAVs, pose model)
+```
+
+### 2.3 Key implementation decisions
+
+1. **No bundler.** The site is plain ES modules plus an import map for
+   `three`. This keeps the deployment a pure static upload, removes a build
+   step that could drift from the source, and makes the served code the code in
+   the repository. MediaPipe is imported from its CDN **only when webcam mode is
+   first entered**, so mouse-only play downloads nothing extra.
+
+2. **The physics port is exact.** `src/physics.js` mirrors `physics.py`
+   statement for statement (same sub-step, same swept-circle test, same impulse
+   equations, same kickback/pit rules, same capture/restore snapshot shape).
+   `tools/fidelity_run.mjs` runs both and `tools/fidelity_compare.mjs` diffs
+   them: **0 mismatches** across 12 throws (see §4).
+
+3. **Colour pipeline.** Panda3D writes colours straight to the framebuffer with
+   no gamma conversion. Three.js is therefore configured with
+   `THREE.ColorManagement.enabled = false` and a linear output colour space, and
+   every generated texture is `NoColorSpace`. A colour of `(24, 22, 62)` in
+   `config.js` renders as those literal bytes, exactly as in the original.
+
+4. **Handedness.** The game's world is right-handed with `+z` down-lane and `+x`
+   to the bowler's right, and the camera looks towards `+z`. Three.js shows
+   world `+x` on the **left** in that setup (the original shows it on the
+   right), so the projection matrix's x-scale is negated and every material is
+   double-sided — the image then matches the original's framing exactly
+   (verified by comparing against `docs/screens/*.png`).
+
+5. **The 1280×720 reference grid.** All UI sizes are the original's reference
+   pixels; the stage is a 1280×720 box scaled to fit the window. The original
+   re-anchors its UI for arbitrary aspect ratios; the browser build letterboxes
+   to the reference 16:9 instead (see §5).
+
+6. **Snake-case aliases.** The ported call sites read like the Python
+   (`standing_pins()`, `restore_survivors()`, …). The JS classes define the
+   camelCase implementation and a one-line snake_case alias, so the port stays
+   reviewable against the original.
+
+7. **Audio.** `AudioSystem` fetches the 18 WAVs from `assets/audio/`, decodes
+   them into `AudioBuffer`s and plays them through a `GainNode` per sound.
+   Master/SFX/music volumes and mute map exactly as `AudioSettings.volume_for`
+   does. Playback is unlocked on the first user gesture (browser autoplay
+   policy).
+
+8. **Webcam.** A `TrackingService` replaces `tracking/service.py`: same
+   snapshot contract (`tracked`, `confidence`, `landmarks`, `fps`,
+   `frame_count`, `last_tracked_at`, `error`, `frame`), same landmark names
+   (MediaPipe's 33), same confidence/visibility thresholds. `input/swing.py`'s
+   phase machine is ported unchanged, and `event_to_throw` maps a recognised
+   swing onto `ThrowData` with the same constants. The in-game feed panel shows
+   the live `<video>` (mirrored) with the skeleton drawn on a canvas.
+
+9. **Settings** persist to `localStorage` under `hells-balls-settings` with the
+   same defaults and the same validation as `game/settings.py`.
+
+10. **Tests.** The Python test suite is untouched and still runs against the
+    original. For the browser build, verification is (a) the physics/scoring/
+    challenge/question fidelity diffs against the Python originals (§4), and
+    (b) scripted browser runs that drive the real game loop (§5).
+
+---
+
+## 3. Feature-by-feature checklist
+
+Every row was taken from the actual repository (not from documentation) and
+checked in the browser build.
+
+### Core simulation
+
+| Feature (source) | Browser | Evidence |
+| --- | --- | --- |
+| Ball skid → roll transition, kinetic + rolling friction (`physics.BallPhysics.step`) | ✔ | fidelity diff, §4 |
+| Hook spin as axis rotation along travel, sideways slip friction (`BallPhysics.launch`) | ✔ | fidelity diff (spin cases), challenge runs |
+| Orientation integration `R ← exp([ω dt]×) R` | ✔ | ball texture wheels in `docs/screens` comparison |
+| Ball bounds + gutter entry (`_apply_bounds`) | ✔ | `gutter` fidelity case |
+| Swept-path ball↔pin contact, one strike per pin per roll (`Deck._resolve_ball_contacts`) | ✔ | fidelity diff (pin counts + trajectories) |
+| Pin toppling (pendulum then free rod), sliding, deck friction | ✔ | fidelity diff (trajectories, knockdowns) |
+| Pin↔pin closest-point impulses, overlap correction | ✔ | fidelity diff (roll_down sets, kickback hits) |
+| Kickback walls + pit removal (`PinPhysics._resolve_bounds`) | ✔ | fidelity diff (`kickback_hits`) |
+| Fixed 1/240 s sub-step clock, bounded backlog (`Deck._run_substeps`) | ✔ | fidelity diff (elapsed + trajectory timings) |
+| Frame-rate independence | ✔ | sub-step clock ported; bot + rolls use the same `Deck` |
+| `capture_state` / `restore_state` snapshots | ✔ | Physics Lab scrub verified in-browser |
+
+### Scoring / rules
+
+| Feature | Browser | Evidence |
+| --- | --- | --- |
+| Ten frames, strikes, spares, open frames | ✔ | scoring fidelity diff (8 sequences) |
+| Tenth-frame bonus balls + rack resets | ✔ | scoring diff; `12×10 → 300` |
+| Cumulative running totals, unresolved frames stay blank | ✔ | scoring diff |
+| Pin-count clamping against the scorer | ✔ | `Match.recordRoll` ported; browser runs |
+| Turn order: keep bowling until the frame completes | ✔ | browser: 9 then 0 → turn passed |
+| Local 2–4 players with explicit handoff | ✔ | browser: 4-player rotation, handoff banner |
+| BowlRush clock (runs in ready/handoff, freezes in a roll) | ✔ | browser: timer 59.5 → tick, handoff |
+| BowlRush throw-in-flight finishes after time-out | ✔ | same state machine as the original |
+| Results aggregation + winners/ties | ✔ | browser: `DRAW: P1 & P2` result line |
+
+### Modes
+
+| Mode | Browser | Evidence |
+| --- | --- | --- |
+| Classic Bowling | ✔ | full frame played, scorecard marks `9 0` |
+| Physics Trivia (10 questions, free-response marking, throw gate) | ✔ | correct → throw; wrong → forfeits, next question; question-marking diff |
+| Equation Challenge (10 interactive challenges, real leaves, unlimited attempts, measurements, hints, solution) | ✔ | `1.37°` → **PIN 10 DOWN!** through the real deck; miss → hint unlocked; challenge-bank diff (all 10 answers, values, working text) |
+| Player vs Bot (Easy/Medium/Hard) | ✔ | hard bot bowled a **strike** through the real simulation after the human's frame |
+| Local Multiplayer (2–4) | ✔ | 4-player rotation + handoff confirmed |
+| BowlRush | ✔ | timer, fresh rack per throw, alternation |
+
+### Input
+
+| Feature | Browser | Evidence |
+| --- | --- | --- |
+| Mouse aim (pointer x → aim point at the arrows, ±2°, frozen during a drag) | ✔ | aim swept ±0.382 m with the pointer at the edges |
+| A/D (or ←/→) lateral position | ✔ | ported `MouseInput._update_lateral` |
+| Drag back → stroke forward → release; speed from the fastest stroke | ✔ | a scripted drag produced `speed 5.4 m/s` |
+| Stroke direction → release yaw; sideways speed → hook | ✔ | the same drag produced `yaw +2.0°`, `hook −0.69 rad/s` |
+| `MIN_DRAG_DISTANCE` / `MIN_THROW_SPEED` release gates | ✔ | ported |
+| Seeded `ReleaseNoise` (off by default) | ✔ | ported |
+| Webcam pose → swing detector → throw (full phase machine) | ✔ (ported; camera unavailable in this environment) | detector ported 1:1; the no-camera path was exercised and falls back to mouse with the message |
+| `TAB` / `1` / `2` input switching, `C` throwing-arm cycle | ✔ | ported and reachable |
+| Turn handoff (mouse ENTER/click; webcam ready-pose progress) | ✔ | banner + progress bar + ENTER confirmed in-browser |
+| Hand menu navigation (experimental, off by default) | ✔ | ported (dwell cursor), settings toggle |
+
+### Presentation
+
+| Feature | Browser | Evidence |
+| --- | --- | --- |
+| Neon city, lane, gutters, markings, pin deck | ✔ | canvas captures match `docs/screens` framing |
+| Procedural textures (wood, approach, ball crackle, facade windows, skyline with moon, glow, gradients) | ✔ | canvas textures generated at runtime; compared against Pillow output |
+| Pin mesh: monotone-cubic lathe of the regulation profile + white/red skin | ✔ | ported; NaN-vertex bug found and fixed by comparison |
+| Soft key/fill lighting shader | ✔ | ported GLSL as a `ShaderMaterial` |
+| Camera rig: ready / rolling dolly / deck push-in / menu / modes / splash / lab shots, FOV 60→54 | ✔ | captures at three shots |
+| Procedural bowler avatar + 20-channel pose blend + swing following | ✔ | visible in captures; pose table ported |
+| HUD: scorecard, score, pin rack, status line, player chips, timer, webcam chip, physics readout | ✔ | DOM verified: 10 cells, 10 ticks, correct texts |
+| Scorecard marks/scores/highlight | ✔ | `9 0` rendered, active frame highlighted |
+| Question panel (Trivia) with hints and worked solution | ✔ | live in browser |
+| Challenge panel with lane diagram, measured feedback, buttons | ✔ | live in browser; diagram drawn from the real rack |
+| Overlays: pause (4 actions), results (rematch/lab/menu + award banner), handoff banner | ✔ | DOM-click tests |
+| Physics Lab: launch steppers, BOWL/PAUSE/RESET, live equations, scrubbable timeline | ✔ | bowled, paused, scrubbed to t=0.04 s, reset |
+| Motion system: result cards, pin pops, flashes, confetti, camera shake, neon breathing/spike, pin glow, dust, impact rings, ball trail, aim guide, sweeper + staggered rack reset | ✔ | ported in `motion/`; triggers fire from the same call sites |
+| Reduce motion | ✔ | a roll completes with shake/flash/pulse suppressed |
+| Synthesised SFX + music bed, volume/mute | ✔ | all 18 buffers decode and play; settings apply live |
+
+### Modes of engagement
+
+| Feature | Browser | Evidence |
+| --- | --- | --- |
+| Splash (any key/click, auto-advance) | ✔ | boots here |
+| Main menu (PLAY / HOW TO PLAY / PHYSICS LAB / SETTINGS / QUIT, input toggle, hint bar) | ✔ | DOM-click test |
+| Mode picker (6 rows, detail panel, rules chips, match setup, START/BACK) | ✔ | DOM-click test; 6 rows confirmed |
+| How to Play (4 tabs, exact text, scroll, PREVIOUS/NEXT/BACK) | ✔ | 4 tabs, rows render |
+| Settings (input, arm, volumes, mute, physics readout, reduce motion, hand nav) | ✔ | 9 rows, cycling verified |
+| Pause / resume / restart / quit to menu | ✔ | DOM-click test |
+| Rematch / open Physics Lab from results | ✔ | overlay wired |
+| F1x screenshot (F12) | ✔ | downloads the canvas as a PNG |
+
+---
+
+## 4. Test results
+
+### 4.1 Physics fidelity vs the original Python (the strongest evidence)
+
+```
+> python tools/fidelity_dump.py tools/physics_py.json
+> node   tools/fidelity_run.mjs tools/physics_js.json
+> node   tools/fidelity_compare.mjs tools/physics_py.json tools/physics_js.json
+cases compared: 12
+mismatches: 0
+```
+
+Each case compares **knockdowns, standing pins, first-contact time, impact
+speed, final ball position, simulation elapsed time, the roll-down pin set,
+kickback contacts, and the recorded ball trajectory** (every 40th sub-step).
+Cases cover: centre throws at 7.5/8/12/2 m/s, the angle-to-pin shot, −4.71 and
++4.71 rad/s hook shots, the 1-3 pocket, the speed-to-curve shot, a mixed
+lateral/angle/spin throw and a gutter ball. **Zero mismatches** — the browser
+simulation produces the identical outcome to the original.
+
+### 4.2 Scoring / challenges / questions fidelity
+
+```
+> python tools/fidelity_dump2.py tools/logic_py.json
+> node   tools/fidelity_run2.mjs tools/logic_js.json
+> node   tools/fidelity_compare2.mjs tools/logic_py.json tools/logic_js.json
+scoring cases: 8
+challenges: 10
+question samples: 10
+problems: 0
+```
+
+* **Scoring**: 8 roll sequences (including 12 strikes = 300, a 167 mixed game,
+  all-spares, all-ones, all-gutters, tenth-frame bonus cases) — rolls, frame
+  bounds, marks, cumulative totals, current/total score, completion, current
+  frame and standing-pin counts all identical.
+* **Challenges**: for all ten challenges — the solved answer, the display text,
+  the rack, the aim point, the launch values the answer produces, the equation,
+  the brief, the working and the progressive hints — identical.
+* **Questions**: ten sample answers (correct and wrong, numeric with/without
+  units, text with aliases) — identical marking, summaries and detail lines.
+
+### 4.3 Browser runs
+
+Scripted through the real game loop in a browser (headless Chromium):
+
+| Check | Result |
+| --- | --- |
+| Boot → splash → menu → mode picker (6 rows) | pass |
+| Classic: 9-pin ball, then 0; scorecard `9 0`, frame advances | pass |
+| Trivia: correct answer → throw earned → 9 pins → question 2 | pass |
+| Trivia: wrong answer → throw forfeited → question 2, no roll recorded | pass |
+| Equation: `0` → “MISSED THE 10 PIN - TOO FAR LEFT” + hint; `1.37` → “PIN 10 DOWN!”; continue → challenge 2 | pass |
+| Player vs Bot: human frame → handoff → hard bot bowls a **strike** → turn returns | pass |
+| Local Multiplayer: 4-player rotation; frame end → handoff banner → confirm | pass |
+| BowlRush: clock ticks only while eligible; result → handoff | pass |
+| Pause overlay: RESUME, 4 buttons, sim frozen | pass |
+| Physics Lab: BOWL → rolling → settling → “9 PINS”; scrub to t=0.04 s (paused); RESET → idle, 10 standing | pass |
+| Settings: 9 rows; cycling input/arm/volumes writes and applies | pass |
+| Webcam with no camera: reports unavailable and switches to mouse | pass |
+| Reduce motion: roll completes, effects suppressed | pass |
+| Mouse drag → throw: 5.4 m/s, yaw +2.0°, hook −0.69 rad/s → real roll recorded | pass |
+| Audio: 18/18 buffers decode; context running | pass |
+| Console: no uncaught errors after the full sweep | pass |
+
+### 4.4 Visual comparison
+
+Frames captured from the browser canvas were compared against the original's own
+screenshots in `docs/screens/` (splash/menu/ready/rolling/deck). Framing, lane
+and neon colours, pin look, ball crackle, avatar placement and the city facade
+were matched; that comparison drove three real fixes: the horizontal mirror,
+the gamma/washed-out colours, and a facade texture that had degenerated to no
+windows for its seed.
+
+---
+
+## 5. Known differences
+
+These are the places where the browser build cannot be byte-identical, all of
+them cosmetic or environmental:
+
+1. **Letterboxing instead of re-anchoring.** The original recomputes every UI
+   position from the live window aspect ratio. The browser build lays out on
+   the 1280×720 reference grid and scales the whole stage to fit the window
+   (letterboxed). At 16:9 — the original's default window — the picture is
+   identical; at other aspect ratios the original would reflow while the
+   browser build letterboxes.
+2. **Webcam pose runs in the browser's MediaPipe build.** Same model, same 33
+   landmarks, same thresholds; the underlying inference runtime differs
+   (MediaPipe Tasks Web vs the Python Tasks API). It is exercised whenever a
+   camera is present; in this headless environment only the no-camera fallback
+   could be verified.
+3. **Hand menu navigation** remains experimental and off by default, exactly as
+   in the original; it is ported but not human-verified.
+4. **Audio** is the original's synthesised WAV output played through Web Audio
+   rather than generated at runtime (Python's `wave`/`struct` synthesiser has no
+   browser runtime). The samples are identical.
+5. **Timing granularity.** The original frame hook uses Panda3D's frame delta;
+   the browser build uses `requestAnimationFrame` deltas with the same 0.1 s
+   clamp, plus a timer fallback for throttled/hidden tabs (a little extra
+   robustness, no gameplay change — the deck integrates on its own fixed
+   sub-steps either way).
+6. **Popup/persistence details.** Settings live in `localStorage` instead of
+   `settings.json`, and the in-game webcam feed is a `<video>` element with a
+   canvas skeleton overlay instead of a Panda3D RAM texture.
+7. **`F12` screenshot** downloads a PNG of the 3D canvas (the DOM UI is not part
+   of the canvas; the original captured the whole window).
+
+Nothing in the game's rules, physics, scoring, controls, modes or content was
+changed, simplified or omitted.
+
+---
+
+## 6. Running and deploying
+
+### Local
+
+The site is static. Any static server works from the repository root:
+
+```
+python tools/serve.py 8124        # a no-cache static server for local testing
+# then open http://127.0.0.1:8124/
+```
+
+(Any other static file server is fine; a server is needed because ES modules
+cannot be loaded from `file://`.)
+
+### Vercel
+
+`vercel.json` deploys the repository root as a static site
+(`"framework": null`, `"outputDirectory": "."`). No build command runs.
+
+**Automatic deployments from GitHub:** import the repository in Vercel
+("Add New… → Project"), pick the repository, and leave the framework preset on
+"Other"/"No framework". Vercel will then deploy every push to the production
+branch automatically and every pull request as a preview. There is nothing else
+to configure — no environment variables, no build settings.
+
+### Verification tools
+
+```
+python tools/fidelity_dump.py  tools/physics_py.json   # original physics
+node   tools/fidelity_run.mjs  tools/physics_js.json   # browser physics
+node   tools/fidelity_compare.mjs tools/physics_py.json tools/physics_js.json
+
+python tools/fidelity_dump2.py tools/logic_py.json     # scoring/challenges/questions
+node   tools/fidelity_run2.mjs tools/logic_js.json
+node   tools/fidelity_compare2.mjs tools/logic_py.json tools/logic_js.json
+
+node   tools/check_methods.mjs                         # port sanity check
+python tools/dump_facade.py                            # original facade stats
+```
+
+## 7. Remaining issues
+
+* **Webcam release timing on a real human swing** is unverified here for the
+  same reason it was unverified in the original: no camera was available in this
+  environment. The detector is a 1:1 port, and the failure path (no camera,
+  tracking lost, mid-swing jump) is exercised.
+* **The DOM UI was verified structurally** (element presence, text, geometry,
+  real click routing) rather than by screenshot, because the test browser runs
+  headless. The 3D layer was verified visually against the original's
+  screenshots.
+* The original's Python test suite (378 tests) still applies to the Python
+  code; it was not ported to JavaScript. The browser build's equivalent
+  assurance is the fidelity diff suite above, which compares the ported logic
+  against the Python originals directly.

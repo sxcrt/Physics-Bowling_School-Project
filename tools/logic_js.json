@@ -1,0 +1,1314 @@
+{
+ "scoring": [
+  {
+   "rolls": [
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10
+   ],
+   "frames": [
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10,
+     10,
+     10
+    ]
+   ],
+   "marks": [
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X",
+     "X",
+     "X"
+    ]
+   ],
+   "cumulative": [
+    30,
+    60,
+    90,
+    120,
+    150,
+    180,
+    210,
+    240,
+    270,
+    300
+   ],
+   "current": 300,
+   "total": 300,
+   "complete": true,
+   "current_frame": 10,
+   "standing": null
+  },
+  {
+   "rolls": [
+    9,
+    0,
+    9,
+    0,
+    9,
+    0,
+    9,
+    0,
+    9,
+    0,
+    9,
+    0,
+    9,
+    0,
+    9,
+    0,
+    9,
+    0,
+    9,
+    0
+   ],
+   "frames": [
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ],
+    [
+     9,
+     0
+    ]
+   ],
+   "marks": [
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ],
+    [
+     "9",
+     "0"
+    ]
+   ],
+   "cumulative": [
+    9,
+    18,
+    27,
+    36,
+    45,
+    54,
+    63,
+    72,
+    81,
+    90
+   ],
+   "current": 90,
+   "total": 90,
+   "complete": true,
+   "current_frame": 10,
+   "standing": null
+  },
+  {
+   "rolls": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "frames": [
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "marks": [
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ],
+    [
+     "1",
+     "1"
+    ]
+   ],
+   "cumulative": [
+    2,
+    4,
+    6,
+    8,
+    10,
+    12,
+    14,
+    16,
+    18,
+    20
+   ],
+   "current": 20,
+   "total": 20,
+   "complete": true,
+   "current_frame": 10,
+   "standing": null
+  },
+  {
+   "rolls": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "frames": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ]
+   ],
+   "marks": [
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "0",
+     "0"
+    ]
+   ],
+   "cumulative": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "current": 0,
+   "total": 0,
+   "complete": true,
+   "current_frame": 10,
+   "standing": null
+  },
+  {
+   "rolls": [
+    7,
+    3,
+    10,
+    4,
+    6,
+    5,
+    5,
+    8,
+    2,
+    10,
+    9,
+    1,
+    6,
+    2,
+    10,
+    10,
+    7,
+    3
+   ],
+   "frames": [
+    [
+     7,
+     3
+    ],
+    [
+     10
+    ],
+    [
+     4,
+     6
+    ],
+    [
+     5,
+     5
+    ],
+    [
+     8,
+     2
+    ],
+    [
+     10
+    ],
+    [
+     9,
+     1
+    ],
+    [
+     6,
+     2
+    ],
+    [
+     10
+    ],
+    [
+     10,
+     7,
+     3
+    ]
+   ],
+   "marks": [
+    [
+     "7",
+     "/"
+    ],
+    [
+     "X"
+    ],
+    [
+     "4",
+     "/"
+    ],
+    [
+     "5",
+     "/"
+    ],
+    [
+     "8",
+     "/"
+    ],
+    [
+     "X"
+    ],
+    [
+     "9",
+     "/"
+    ],
+    [
+     "6",
+     "2"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X",
+     "7",
+     "/"
+    ]
+   ],
+   "cumulative": [
+    20,
+    40,
+    55,
+    73,
+    93,
+    113,
+    129,
+    137,
+    164,
+    184
+   ],
+   "current": 184,
+   "total": 184,
+   "complete": true,
+   "current_frame": 10,
+   "standing": null
+  },
+  {
+   "rolls": [
+    3,
+    4,
+    3,
+    4,
+    3,
+    4,
+    3,
+    4,
+    3,
+    4,
+    3,
+    4,
+    3,
+    4,
+    3,
+    4,
+    3,
+    4,
+    3,
+    4
+   ],
+   "frames": [
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     4
+    ]
+   ],
+   "marks": [
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ],
+    [
+     "3",
+     "4"
+    ]
+   ],
+   "cumulative": [
+    7,
+    14,
+    21,
+    28,
+    35,
+    42,
+    49,
+    56,
+    63,
+    70
+   ],
+   "current": 70,
+   "total": 70,
+   "complete": true,
+   "current_frame": 10,
+   "standing": null
+  },
+  {
+   "rolls": [
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10
+   ],
+   "frames": [
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10
+    ],
+    [
+     10,
+     10,
+     10
+    ]
+   ],
+   "marks": [
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X"
+    ],
+    [
+     "X",
+     "X",
+     "X"
+    ]
+   ],
+   "cumulative": [
+    30,
+    60,
+    90,
+    120,
+    150,
+    180,
+    210,
+    240,
+    270,
+    300
+   ],
+   "current": 300,
+   "total": 300,
+   "complete": true,
+   "current_frame": 10,
+   "standing": null
+  },
+  {
+   "rolls": [
+    0,
+    10,
+    10,
+    5,
+    5,
+    0,
+    0,
+    10,
+    2,
+    8,
+    10,
+    4,
+    6,
+    10
+   ],
+   "frames": [
+    [
+     0,
+     10
+    ],
+    [
+     10
+    ],
+    [
+     5,
+     5
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     10
+    ],
+    [
+     2,
+     8
+    ],
+    [
+     10
+    ],
+    [
+     4,
+     6
+    ],
+    [
+     10
+    ],
+    []
+   ],
+   "marks": [
+    [
+     "0",
+     "/"
+    ],
+    [
+     "X"
+    ],
+    [
+     "5",
+     "/"
+    ],
+    [
+     "0",
+     "0"
+    ],
+    [
+     "X"
+    ],
+    [
+     "2",
+     "/"
+    ],
+    [
+     "X"
+    ],
+    [
+     "4",
+     "/"
+    ],
+    [
+     "X"
+    ],
+    []
+   ],
+   "cumulative": [
+    20,
+    40,
+    50,
+    50,
+    70,
+    90,
+    110,
+    130,
+    null,
+    null
+   ],
+   "current": 130,
+   "total": null,
+   "complete": false,
+   "current_frame": 10,
+   "standing": 10
+  }
+ ],
+ "challenges": [
+  {
+   "id": "angle-to-pin",
+   "answer": 1.373400636,
+   "expected": "1.37 deg",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "10",
+     0.4575,
+     19.08241324446276
+    ]
+   ],
+   "aim_x": 0.4575,
+   "aim_z": 19.082413244,
+   "launch_values": [
+    0,
+    7,
+    1.373400636,
+    0
+   ],
+   "equation": "theta = atan( (x_pin - x0) / d )",
+   "working": "theta = atan((x_pin - x0) / d) = atan((0.4575 - 0.000) / 19.08) = atan(0.0240) = 1.373 degrees. The speed does not appear: a straight path has the same direction at every distance.",
+   "brief": "The 10 pin is the only pin left. You release the ball from the lane centre (x0 = 0.00 m) straight at 7.0 m/s, but with no spin at all. The pin stands x = 0.4575 m to the right at 19.08 m down the lane. What launch angle theta points the ball straight at it?",
+   "steps": [
+    "A straight path changes x linearly with the distance travelled: tan(theta) = sideways / forward.",
+    "tan(theta) = 0.4575 / 19.08 = 0.0240.",
+    "Take the inverse tangent in degrees: theta = atan(0.0240)."
+   ]
+  },
+  {
+   "id": "release-position",
+   "answer": -0.171363679,
+   "expected": "-0.171 m",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "3",
+     0.1525,
+     18.554137748154254
+    ]
+   ],
+   "aim_x": 0.1525,
+   "aim_z": 18.554137748,
+   "launch_values": [
+    -0.171363679,
+    7,
+    1,
+    0
+   ],
+   "equation": "x0 = x_pin - d tan(theta)",
+   "working": "x0 = x_pin - d tan(theta) = 0.1525 m - 18.55 m x tan(1.0 deg) = 0.1525 - 0.324 = -0.171 m. Standing left of centre while aiming to the right makes the path cross the lane centre on the way to the pin.",
+   "brief": "The 3 pin is up. This time the release angle is fixed at 1.0 degrees to the right and you choose where on the lane to stand. The pin is 18.55 m away at x = 0.1525 m. Which release position x0 sends the straight path through the pin?",
+   "steps": [
+    "Start from the path equation x = x0 + d tan(theta) and put the pin's position in for x.",
+    "d tan(theta) = 18.55 x tan(1.0 deg) = 0.324 m.",
+    "x0 = 0.1525 - 0.324."
+   ]
+  },
+  {
+   "id": "arrival-speed",
+   "answer": 6.570920483,
+   "expected": "6.57 m/s",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "1",
+     0,
+     18.29
+    ]
+   ],
+   "aim_x": 0,
+   "aim_z": 18.29,
+   "launch_values": [
+    0,
+    6.570920483,
+    0,
+    0
+   ],
+   "equation": "v = sqrt( u^2 - 2 a d ),   a = mu_r g",
+   "working": "u = sqrt(v^2 + 2 a d) = sqrt(6.0^2 + 2 x 0.196 x 18.29) = sqrt(43.18) = 6.57 m/s. Below this the ball arrives slower than 6.0 m/s; above it, faster - that is the whole equation.",
+   "brief": "The head pin at 18.29 m must be hit with at least 6.0 m/s for the shot to carry. Rolling resistance decelerates a rolling ball at a = mu_r g with mu_r = 0.020. What release speed u gets the ball there at 6.0 m/s?",
+   "steps": [
+    "Rearrange v^2 = u^2 - 2 a d for the release speed: u^2 = v^2 + 2 a d.",
+    "2 a d = 2 x 0.196 x 18.29 = 7.177.",
+    "u = sqrt(36.0 + 7.177)."
+   ]
+  },
+  {
+   "id": "speed-to-curve",
+   "answer": 6.351888564,
+   "expected": "6.35 m/s",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "10",
+     0.4575,
+     19.08241324446276
+    ]
+   ],
+   "aim_x": 0.4575,
+   "aim_z": 19.082413244,
+   "launch_values": [
+    0,
+    6.351888564,
+    0,
+    -5
+   ],
+   "equation": "D = (2/7) R |omega| (t - t_s/2),   t = d/v,   t_s = 2 R |omega| / (7 mu_k g)",
+   "working": "t_s = 2 x 0.109 x 5.0 / (7 x 0.120 x 9.81) = 0.1323 s. t = d/v = D/((2/7) R |omega|) + t_s/2 = 2.9381 + 0.0661 = 3.0042 s, so v = 19.08 / 3.0042 = 6.35 m/s.",
+   "brief": "The 10 pin is up and the release has a fixed hook spin of -5.0 rad/s (a right-hand hook). You choose the release speed. The ball starts on the lane centre and must drift 0.4575 m to the right over 19.08 m. How fast must it be released? (Faster leaves less time to curve.)",
+   "steps": [
+    "First the skid time: t_s = 2 R |omega| / (7 mu_k g) = 0.1323 s.",
+    "The drift equation is D = (2/7) R |omega| (d/v - t_s/2). Rearrange for d/v.",
+    "d/v = D / ((2/7) R |omega|) + t_s/2 = 2.9381 + 0.0661 s, then v = d / that."
+   ]
+  },
+  {
+   "id": "spin-to-pin",
+   "answer": -3.710755466,
+   "expected": "-3.71 rad/s",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "6",
+     0.305,
+     18.818275496308505
+    ]
+   ],
+   "aim_x": 0.305,
+   "aim_z": 18.818275496,
+   "launch_values": [
+    0,
+    7,
+    0,
+    -3.710755466
+   ],
+   "equation": "D = (2/7) R omega (t - t_s/2),   t = d/v,   t_s = 2 R |omega| / (7 mu_k g)",
+   "working": "t = d/v = 18.82 / 7.0 = 2.6883 s. Solving D = (2/7) R |omega| (t - t_s/2) with D = 0.3050 m gives |omega| = 3.71 rad/s (t_s = 0.0982 s). The pin is to the right, so the ball must curl right: omega = -3.71 rad/s.",
+   "brief": "The 6 pin is up at x = 0.3050 m, 18.82 m away. You release from the lane centre at 7.0 m/s with a launch angle of 0.0 degrees, and you choose the hook spin. The release slip makes the contact point slide; friction against it is what bends the path. What signed hook spin omega curves the ball onto the pin?",
+   "steps": [
+    "The ball must drift 0.3050 m to the right, so the signed spin is negative.",
+    "Skid time: t_s = 2 R |omega| / (7 mu_k g); travel time: t = d/v = 2.6883 s.",
+    "Solve 0.3050 = (2/7) R |omega| (t - t_s/2) for |omega| - the t_s term is small but keep it."
+   ]
+  },
+  {
+   "id": "spin-to-corner",
+   "answer": -4.71134599,
+   "expected": "-4.71 rad/s",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "10",
+     0.4575,
+     19.08241324446276
+    ]
+   ],
+   "aim_x": 0.4575,
+   "aim_z": 19.082413244,
+   "launch_values": [
+    0,
+    6,
+    0,
+    -4.71134599
+   ],
+   "equation": "s = R omega   (slip)  ->  D = (2/7) R |omega| (t - t_s/2)",
+   "working": "t = 19.08 / 6.0 = 3.1804 s. With D = 0.4575 m the model gives |omega| = 4.71 rad/s (t_s = 0.1246 s), and the pin is to the right, so omega = -4.71 rad/s. The ball crosses 0.458 m of a 0.533 m half-lane - and at about -6.5 rad/s the curve reaches the gutter before the pin, which is the other failure mode to learn.",
+   "brief": "The 10 pin is the only pin standing, x = 0.4575 m at 19.08 m. You release from the lane centre at 6.0 m/s, straight. The lane is only 1.067 m wide, so this shot needs a big hook - and too much spin puts the ball in the gutter. What signed hook spin hits the pin?",
+   "steps": [
+    "Travel time: t = d/v = 3.1804 s; the required drift is 0.4575 m to the right.",
+    "s = R |omega| is the sideways slip the friction has to cancel; it takes t_s = 2 R |omega| / (7 mu_k g).",
+    "Solve 0.4575 = (2/7) R |omega| (t - t_s/2) for |omega|, then choose the sign for \"right\"."
+   ]
+  },
+  {
+   "id": "spin-to-left",
+   "answer": 4.71134599,
+   "expected": "4.71 rad/s",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "7",
+     -0.4575,
+     19.08241324446276
+    ]
+   ],
+   "aim_x": -0.4575,
+   "aim_z": 19.082413244,
+   "launch_values": [
+    0,
+    6,
+    0,
+    4.71134599
+   ],
+   "equation": "D = (2/7) R omega (t - t_s/2)",
+   "working": "t = 3.1804 s; |omega| = 4.71 rad/s; the pin is to the left, so omega = +4.71 rad/s. The sign convention is the only difference from the other corner shot.",
+   "brief": "The 7 pin is the only pin up at x = -0.4575 m (left of centre) and 19.08 m away. Released straight from the lane centre at 6.0 m/s, the hook has to carry the ball the other way this time. Which signed hook spin does it?",
+   "steps": [
+    "The ball must move left, and positive spin curls left.",
+    "|omega| solves 0.4575 = (2/7) R |omega| (t - t_s/2) with t = 19.08 / 6.0.",
+    "Same magnitudes as the 10-pin challenge, opposite sign."
+   ]
+  },
+  {
+   "id": "angular-momentum",
+   "answer": -4.71134599,
+   "expected": "-4.71 rad/s",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "10",
+     0.4575,
+     19.08241324446276
+    ]
+   ],
+   "aim_x": 0.4575,
+   "aim_z": 19.082413244,
+   "launch_values": [
+    0,
+    6,
+    0,
+    -4.71134599
+   ],
+   "equation": "L = I omega,    I = (2/5) m R^2",
+   "working": "I = (2/5) m R^2 = 0.4 x 6.0 x 0.109^2 = 0.02851 kg m^2. omega = L / I = 0.1343 / 0.02851 = 4.711 rad/s in magnitude; curling right makes it omega = -4.711 rad/s. That spin produces the 0.4575 m of drift the pin needs, so the two problems agree - as they must.",
+   "brief": "The lone 10 pin is up at x = 0.4575 m, 19.08 m away. The coach tells you the release must carry L = 0.1343 kg m^2/s of angular momentum about the line of travel, curling to the right. The ball is a solid sphere, m = 6.0 kg, R = 0.109 m. What signed hook spin omega gives it that angular momentum?",
+   "steps": [
+    "First the moment of inertia: I = (2/5) m R^2 = (2/5) x 6.0 x 0.109^2 = 0.02851 kg m^2.",
+    "Then omega = L / I = 0.1343 / 0.02851.",
+    "The spin must curl the ball to the right, so report it with the matching sign (positive curls left)."
+   ]
+  },
+  {
+   "id": "spin-up-torque",
+   "answer": 0.671706021,
+   "expected": "0.672 N m",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "7",
+     -0.4575,
+     19.08241324446276
+    ]
+   ],
+   "aim_x": -0.4575,
+   "aim_z": 19.082413244,
+   "launch_values": [
+    0,
+    6,
+    0,
+    4.71134599
+   ],
+   "equation": "omega = tau dt / I,    I = (2/5) m R^2",
+   "working": "The shot needs the 7-pin spin: |omega| = 4.71 rad/s, and it must curl left, so omega = +4.71. tau = I omega / dt = 0.02851 x 4.71 / 0.20 = 0.672 N m. The engine then releases the ball with that omega, and the friction-driven skid does the rest.",
+   "brief": "The lone 7 pin is up at x = -0.4575 m, 19.08 m away, and the release speed is 6.0 m/s. This time the hook spin comes from the wind-up: you apply a constant torque tau about the line of travel for 0.20 s, giving the solid ball (I = 0.02851 kg m^2) omega = tau t / I. What torque spins the ball onto the pin?",
+   "steps": [
+    "Work out the spin the shot needs first: solve the drift equation for the 7 pin (about 4.71 rad/s, positive for a left-hand curve).",
+    "Invert omega = tau dt / I: tau = I omega / dt = 0.02851 x |omega| / 0.20.",
+    "A torque that spins the ball to curve left is the positive one."
+   ]
+  },
+  {
+   "id": "pin-speed",
+   "answer": 4.420024337,
+   "expected": "4.42 m/s",
+   "targets": [
+    0
+   ],
+   "rack": [
+    [
+     "1",
+     0,
+     18.29
+    ]
+   ],
+   "aim_x": 0,
+   "aim_z": 18.29,
+   "launch_values": [
+    0,
+    4.420024337,
+    0,
+    0
+   ],
+   "equation": "J = (1 + e) v / (1/m + 2/m_p),    v_pin = J / m_p",
+   "working": "v_pin = 2.50 m/s needs an arrival speed v = v_pin m_p (1/m + 2/m_p) / (1 + e) = 3.516 m/s. Over 18.29 m the rolling deceleration a = 0.196 m/s^2 costs 2 a d = 7.177 (m/s)^2, so u = sqrt(3.516^2 + 7.177) = 4.42 m/s.",
+   "brief": "A lone head pin at 18.29 m must be struck hard enough to leave the contact at 2.5 m/s (that is the kind of pin speed that carries into the next row). The ball and pin collide with restitution e = 0.6; the pin leaves with v_pin = J / m_p. What release speed does it take?",
+   "steps": [
+    "First the arrival speed the collision needs: v_pin = (1 + e) v / (m_p (1/m + 2/m_p)) so v = 3.516 m/s.",
+    "Then the release speed from rolling resistance: u = sqrt(v^2 + 2 a d) with a = mu_r g = 0.196 m/s^2.",
+    "u = sqrt(3.516^2 + 2 x 0.196 x 18.29)."
+   ]
+  }
+ ],
+ "questions": [
+  {
+   "label": "momentum",
+   "correct": true,
+   "summary": "Correct: momentum.",
+   "expected": "momentum",
+   "detail": ""
+  },
+  {
+   "label": "newton",
+   "correct": true,
+   "summary": "Correct: newton.",
+   "expected": "newton",
+   "detail": ""
+  },
+  {
+   "label": "0 m/s^2",
+   "correct": true,
+   "summary": "Correct: 0 m/s^2.",
+   "expected": "0 m/s^2",
+   "detail": ""
+  },
+  {
+   "label": "backward",
+   "correct": true,
+   "summary": "Correct: backwards.",
+   "expected": "backwards",
+   "detail": ""
+  },
+  {
+   "label": "the 2 kg ball",
+   "correct": true,
+   "summary": "Correct: 2 kg ball.",
+   "expected": "2 kg ball",
+   "detail": ""
+  },
+  {
+   "label": "equal",
+   "correct": true,
+   "summary": "Correct: equal.",
+   "expected": "equal",
+   "detail": ""
+  },
+  {
+   "label": "18/3",
+   "correct": true,
+   "summary": "Correct: 6 m/s.",
+   "expected": "6 m/s",
+   "detail": ""
+  },
+  {
+   "label": "a",
+   "correct": true,
+   "summary": "Correct: acceleration.",
+   "expected": "acceleration",
+   "detail": ""
+  },
+  {
+   "label": "2 m/s^2",
+   "correct": true,
+   "summary": "Correct: 2 m/s^2.",
+   "expected": "2 m/s^2",
+   "detail": ""
+  },
+  {
+   "label": "impulse",
+   "correct": true,
+   "summary": "Correct: momentum.",
+   "expected": "momentum",
+   "detail": ""
+  }
+ ]
+}
