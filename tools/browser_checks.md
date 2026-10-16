@@ -253,3 +253,38 @@ and `tools/vercel_sim.py 8130` (the deployed file set), `hellsAudit()` is clean
 on every screen and play state, 72 Node regression tests pass, and both
 Python-fidelity diffs still report 0 mismatches.
 
+## Fourth pass: webcam-to-throw repair (Chromium/Electron, 2026-10-16)
+
+The webcam pipeline had never been exercised with real landmark data. This pass
+verified it with recorded MediaPipe traces, fixed the browser-runtime defects and
+added regression coverage:
+
+* `tools/export_landmarks.py` exports a recorded pose trace (the same model the
+  browser uses) plus the Python reference detector's phase timeline from real
+  footage; `tools/js_tests.mjs` replays it through the browser detector and
+  asserts the identical phase sequence and release (see the
+  `webcam real-landmark fixtures` section).
+* `tools/webcam_fixture_check.js` drives the **real** `TrackingService`,
+  `WebcamInput`, detector, game and physics in the page: the camera boundary is
+  a canvas captureStream and the landmarker replays the recorded trace. All six
+  checks pass on `tools/vercel_sim.py 8130 --with-tools`:
+  recorded swing launches a ball (once, `source: webcam`, finite parameters),
+  the phase machine arms/wings, and waving never throws.
+* Live verification with the actual MediaPipe runtime (GPU delegate, jsDelivr
+  wasm + the shipped model) on the burpees video through `getUserMedia` →
+  service → game: phase timeline `waiting→ready→…→forward`, single ball launch
+  at t≈10.8 s, 25–37 fps, no console errors.
+* Lifecycle, verified in the page with a stubbed camera: entering webcam mode
+  starts the tracker (live track, frames flowing); switching to mouse ends the
+  track, freezes the loop and releases the camera; re-entering starts a fresh
+  tracker; the real (denied) browser camera surfaces a permission message with
+  recovery steps, falls back to mouse, and retrying re-attempts and re-reports.
+
+Run in the page console (throwaway load):
+
+```
+(0, eval)(await (await fetch('/tools/webcam_fixture_check.js')).text())
+await window.hellsWebcamFixtureRun()
+```
+
+

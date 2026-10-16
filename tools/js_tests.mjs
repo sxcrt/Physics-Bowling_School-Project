@@ -15,7 +15,7 @@ import { Match, Player, PLAYER_COLORS } from '../src/game/session.js';
 import * as modes from '../src/game/modes.js';
 import { Settings, DEFAULTS } from '../src/game/settings.js';
 import { MouseInput, aimAngle, ReleaseNoise, makeThrowData } from '../src/input/mouse.js';
-import { eventToThrow, WebcamInput } from '../src/input/webcam.js';
+import { eventToThrow, WebcamInput, TrackingService } from '../src/input/webcam.js';
 import { SwingDetector, SwingEvent, PHASE_WAITING, PHASE_READY, PHASE_BACKSWING, PHASE_FORWARD, PHASE_FOLLOW } from '../src/input/swing.js';
 import { simulateRoll, Deck, DeckTimeline, rackPositions, PinPhysics } from '../src/physics.js';
 import { checkAnswer, TRIVIA_QUESTIONS } from '../src/game/questions.js';
@@ -44,6 +44,11 @@ function test(name, fn) {
 function section(name) { console.log(`\n== ${name}`); }
 const DT = 1.0 / 30.0;
 const rad = (deg) => deg * Math.PI / 180;
+
+// Async tests (camera lifecycle involves real timers and promises). They are
+// queued and run sequentially: each one installs process-global browser stubs.
+const asyncTests = [];
+function testAsync(name, fn) { asyncTests.push([name, fn]); }
 
 // ---------------------------------------------------------------------------
 section('theme helpers (space key regression)');
@@ -400,6 +405,305 @@ test('tracking loss during the backswing aborts the swing', () => {
   assert.equal(s.events.length, 0);
   assert.equal(s.detector.phase, PHASE_WAITING);
 });
+test('leaning and body sway never throw', () => {
+  const s = new SwingScript();
+  s.holdReady();
+  // 90 frames of the player swaying around and shifting weight, arm still
+  for (let i = 0; i < 90; i++) {
+    const sway = 0.05 * Math.sin(i / 6);
+    const crouch = 0.02 * Math.sin(i / 9);
+    s.feed(poseResult({ bodyX: 0.5 + sway, shoulderY: 0.40 + crouch, hipY: 0.65 + crouch }));
+  }
+  assert.equal(s.events.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+section('webcam tracking service (browser lifecycle)');
+const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function fakeStream() {
+  const track = { kind: 'video', state: 'live', stop() { this.state = 'ended'; } };
+  return { tracks: [track], getTracks() { return this.tracks; } };
+}
+
+function fakeVideo({ stallPlay = false } = {}) {
+  return {
+    muted: false, playsInline: false, srcObject: null,
+    readyState: 2, currentTime: 0, videoWidth: 640, videoHeight: 480,
+    play() { return stallPlay ? new Promise(() => {}) : Promise.resolve(); },
+    advance(dt = 1 / 30) { this.currentTime += dt; },
+  };
+}
+
+// Installs browser stubs (document/navigator/rAF) for one test and restores
+// them afterwards. ``fn`` receives a handle with the mutable stubs.
+function withBrowserStubs(fn) {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const savedDoc = globalThis.document;
+  const savedRaf = globalThis.requestAnimationFrame;
+  const handle = {
+    videoFactory: () => fakeVideo(),
+    gum: async () => fakeStream(),
+    enumerate: async () => [],
+  };
+  const mediaDevices = {
+    getUserMedia: (...args) => handle.gum(...args),
+    enumerateDevices: (...args) => handle.enumerate(...args),
+  };
+  Object.defineProperty(globalThis, 'navigator', { value: { mediaDevices }, configurable: true, writable: true });
+  globalThis.document = { hidden: false, createElement: () => handle.videoFactory() };
+  globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(0), 1);
+  const restore = () => {
+    if (saved) Object.defineProperty(globalThis, 'navigator', saved);
+    else delete globalThis.navigator;
+    globalThis.document = savedDoc;
+    globalThis.requestAnimationFrame = savedRaf;
+  };
+  try { return Promise.resolve(fn(handle)).finally(restore); }
+  catch (err) { restore(); return Promise.reject(err); }
+}
+
+testAsync('camera index setting selects the enumerated device', async () => {
+  await withBrowserStubs(async (handle) => {
+    handle.enumerate = async () => [
+      { kind: 'videoinput', deviceId: 'cam-a' },
+      { kind: 'videoinput', deviceId: 'cam-b' },
+      { kind: 'audioinput', deviceId: 'mic' },
+    ];
+    const service = new TrackingService();
+    assert.equal(service._preferredIndex, null);
+    assert.equal((await service._videoConstraints()).facingMode, 'user');
+    service.setPreferredCamera(1);
+    assert.deepEqual(await service._videoConstraints(), { deviceId: { exact: 'cam-b' } });
+    service.setPreferredCamera(7);          // out of range: default camera
+    assert.equal((await service._videoConstraints()).facingMode, 'user');
+    service.setPreferredCamera(null);
+    assert.equal(service._preferredIndex, null);
+  });
+});
+
+testAsync('permission denial is reported with recovery guidance', async () => {
+  await withBrowserStubs(async (handle) => {
+    handle.gum = async () => { const error = new Error('Permission denied'); error.name = 'NotAllowedError'; throw error; };
+    const service = new TrackingService();
+    await service.start();
+    const snap = service.snapshot();
+    assert.equal(snap.running, false);
+    assert.equal(service.is_running, false);
+    assert.match(String(snap.error), /permission denied/i);
+    assert.match(String(snap.error), /retry/i);
+  });
+});
+
+testAsync('a missing getUserMedia explains the secure-context requirement', async () => {
+  await withBrowserStubs(async () => {
+    delete globalThis.navigator.mediaDevices;
+    const service = new TrackingService();
+    await service.start();
+    assert.equal(service.snapshot().running, false);
+    assert.match(String(service.snapshot().error), /https|localhost|secure/i);
+  });
+});
+
+testAsync('a camera that opens but never delivers frames times out', async () => {
+  await withBrowserStubs(async (handle) => {
+    const stream = fakeStream();
+    handle.gum = async () => stream;
+    handle.videoFactory = () => fakeVideo({ stallPlay: true });
+    const service = new TrackingService({ frame_timeout_ms: 120 });
+    await service.start();
+    const snap = service.snapshot();
+    assert.equal(snap.running, false);
+    assert.match(String(snap.error), /no frames/i);
+    assert.equal(stream.tracks[0].state, 'ended', 'the camera stream is released');
+  });
+});
+
+testAsync('stop() during start() releases the camera and never starts tracking', async () => {
+  await withBrowserStubs(async (handle) => {
+    const stream = fakeStream();
+    let answer = null;
+    handle.gum = () => new Promise((resolve) => { answer = resolve; });
+    let trackerLoads = 0;
+    const service = new TrackingService();
+    service._loadLandmarker = async () => { trackerLoads += 1; return { close() {} }; };
+    const starting = service.start();
+    await sleepMs(5);                 // start() is now awaiting the camera
+    await service.stop();             // the player leaves webcam mode
+    answer(stream);                   // the late permission answer arrives
+    await starting;
+    assert.equal(trackerLoads, 0, 'no pose tracker may be created after stop');
+    assert.equal(service.is_running, false);
+    assert.equal(service._stream, null);
+    assert.equal(stream.tracks[0].state, 'ended', 'the late camera stream is released');
+  });
+});
+
+testAsync('restart after a failure really restarts and processes frames', async () => {
+  await withBrowserStubs(async (handle) => {
+    const service = new TrackingService({ stall_timeout_ms: 60000 });
+    let failFirst = true;
+    handle.gum = async () => {
+      if (failFirst) { failFirst = false; throw new Error('device busy'); }
+      return fakeStream();
+    };
+    service._loadLandmarker = async () => {
+      service._delegate = 'GPU';
+      return { detectForVideo: (video) => { video.advance(); return { landmarks: [] }; }, close() {} };
+    };
+    await service.start();
+    assert.equal(service.snapshot().running, false, 'first attempt failed');
+    assert.match(String(service.snapshot().error), /device busy/);
+    await service.start();            // retry
+    assert.equal(service.is_running, true);
+    await sleepMs(60);
+    assert.ok(service.snapshot().frame_count > 1, 'frames are processed after the retry');
+    assert.equal(service.snapshot().tracked, false);
+    await service.stop();
+    assert.equal(service.is_running, false);
+  });
+});
+
+testAsync('a camera that stops delivering frames mid-session reports a stall', async () => {
+  await withBrowserStubs(async (handle) => {
+    const service = new TrackingService({ stall_timeout_ms: 150, frame_timeout_ms: 5000 });
+    handle.gum = async () => fakeStream();
+    let frames = 0;
+    service._loadLandmarker = async () => {
+      service._delegate = 'GPU';
+      return {
+        detectForVideo: (video) => { frames += 1; if (frames < 3) video.advance(); return { landmarks: [] }; },
+        close() {},
+      };
+    };
+    await service.start();
+    assert.equal(service.is_running, true);
+    await sleepMs(500);
+    assert.equal(service.is_running, false);
+    assert.match(String(service.snapshot().error), /stopped delivering frames/i);
+  });
+});
+
+testAsync('a GPU detection failure rebuilds once on the CPU delegate', async () => {
+  await withBrowserStubs(async (handle) => {
+    const service = new TrackingService({ stall_timeout_ms: 60000 });
+    const built = [];
+    handle.gum = async () => fakeStream();
+    service._loadLandmarker = async (options = {}) => {
+      const delegate = options.delegate || 'GPU';
+      service._delegate = delegate;
+      built.push(delegate);
+      return delegate === 'GPU'
+        ? { detectForVideo: (video) => { video.advance(); throw new Error('WebGL context lost'); }, close() {} }
+        : { detectForVideo: (video) => { video.advance(); return { landmarks: [] }; }, close() {} };
+    };
+    await service.start();
+    await sleepMs(80);
+    assert.deepEqual(built, ['GPU', 'CPU']);
+    assert.equal(service._delegate, 'CPU');
+    assert.ok(service.snapshot().frame_count > 0, 'CPU frames are processed');
+    await service.stop();
+  });
+});
+
+testAsync('switching the throwing arm clears swing history without a throw', async () => {
+  await withBrowserStubs(async () => {
+    const service = {
+      _snapshot: { running: true, tracked: true, confidence: 0.9, landmarks: {}, fps: 30, frame_count: 0, error: null, message: 'tracking' },
+      is_running: true,
+      snapshot() { return this._snapshot; },
+      async start() { this.is_running = true; },
+      async stop() { this.is_running = false; },
+      setPreferredCamera() {},
+      publish(landmarks) {
+        this._snapshot = { ...this._snapshot, tracked: true, confidence: 0.9, landmarks, frame_count: this._snapshot.frame_count + 1 };
+      },
+    };
+    const input = new WebcamInput(service, new SwingDetector());
+    input.setGameReady(true);
+    const step = (landmarks) => {
+      service.publish(landmarks);
+      // pin the processed-frame clock to the detector's nominal 30 fps
+      input._last_process_time = performance.now() / 1000 - DT;
+      input.update();
+    };
+    // ready pose, then part-way into a backswing on the default arm
+    for (let i = 0; i < 12; i++) step(poseResult({}).landmarks);
+    for (const y of [0.66, 0.72, 0.78]) step(poseResult({ rightWristY: y }).landmarks);
+    assert.equal(input._detector.phase, PHASE_BACKSWING);
+    input.setPreferredArm('left');
+    assert.equal(input.preferred_arm, 'left');
+    assert.equal(input._detector.phase, PHASE_WAITING);
+    assert.equal(input.throw_data, null, 'the interrupted swing must not queue a throw');
+  });
+});
+
+// ---------------------------------------------------------------------------
+section('webcam real-landmark fixtures (recorded MediaPipe traces)');
+function loadWebcamFixture(name) {
+  const path = fileURLToPath(new URL(`./${name}`, import.meta.url));
+  return fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : null;
+}
+function feedFixture(fixture, detector) {
+  const names = fixture.landmarks;
+  const n = names.length;
+  const dt = 1 / (fixture.fps || 30);   // the Python reference used the video's own fps
+  const events = [];
+  const runs = [];
+  fixture.frames.forEach((entry, frame) => {
+    let result;
+    if (!entry.t || !entry.l) {
+      result = { landmarks: null, confidence: 0.0, tracked: false, timestamp: 0 };
+    } else {
+      const lm = {};
+      for (let i = 0; i < n; i++) {
+        const x = entry.l[i];
+        if (x === null) continue;
+        lm[names[i]] = { x, y: entry.l[n + i], z: 0, visibility: entry.l[2 * n + i] };
+      }
+      result = { landmarks: lm, confidence: entry.c, tracked: true, timestamp: 0 };
+    }
+    const event = detector.update(result, dt);
+    if (event !== null) events.push({ frame, event });
+    if (!runs.length || runs[runs.length - 1].phase !== detector.phase) {
+      runs.push({ phase: detector.phase, from: frame });
+    }
+  });
+  return { events, runs };
+}
+
+const swingFixture = loadWebcamFixture('webcam_landmarks.json');
+if (swingFixture) {
+  test('a real recorded arm swing releases exactly once at the reference frame', () => {
+    const detector = new SwingDetector();
+    const { events, runs } = feedFixture(swingFixture, detector);
+    const reference = swingFixture.reference;
+    assert.equal(events.length, reference.releases.length, 'release count matches the Python reference');
+    assert.equal(events.length, 1, 'the fixture contains one deliberate swing');
+    const ref = reference.releases[0];
+    assert.ok(Math.abs(events[0].frame - ref.frame) <= 1, `release frame ${events[0].frame} vs reference ${ref.frame}`);
+    assert.equal(events[0].event.arm, ref.arm, 'throwing arm');
+    assert.ok(Math.abs(events[0].event.up_speed - ref.up_speed) < 0.01, 'peak hand speed');
+    assert.ok(Math.abs(events[0].event.rise - ref.rise) < 0.01, 'hand rise');
+    assert.deepEqual(runs.map((r) => r.phase), reference.phase_runs.map((r) => r[0]), 'phase sequence');
+    assert.deepEqual(runs.map((r) => r.from), reference.phase_runs.map((r) => r[1]), 'phase frames');
+  });
+} else {
+  console.log('  (tools/webcam_landmarks.json missing; run python tools/export_landmarks.py first)');
+}
+
+const waveFixture = loadWebcamFixture('webcam_wave_landmarks.json');
+if (waveFixture) {
+  test('real people waving at the camera never produce a throw', () => {
+    const detector = new SwingDetector();
+    const { events, runs } = feedFixture(waveFixture, detector);
+    assert.equal(events.length, 0);
+    assert.equal(detector.release_count, 0);
+    assert.deepEqual(runs.map((r) => r.phase), ['waiting'], 'waving must not even arm the ready pose');
+  });
+} else {
+  console.log('  (tools/webcam_wave_landmarks.json missing; run python tools/export_landmarks.py first)');
+}
 
 // ---------------------------------------------------------------------------
 section('physics regression against the Python fidelity dump');
@@ -678,6 +982,10 @@ test('every card box is filled only by a mark the engine actually produced', () 
 });
 
 // ---------------------------------------------------------------------------
+for (const [name, fn] of asyncTests) {
+  try { await fn(); passed += 1; }
+  catch (err) { failed += 1; failures.push([name, err]); console.error(`FAIL ${name}: ${err && err.message}`); }
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {
   for (const [name, err] of failures) console.error(`- ${name}: ${err && err.stack || err}`);

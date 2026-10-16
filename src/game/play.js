@@ -946,7 +946,7 @@ export class Game {
     const throwData = this.last_throw;
     const deck = this.pins.deck;
     const ball = this.ball.physics;
-    if (throwData === null) { this._physics_lines = []; return; }
+    if (throwData === null) { this._physics_lines = this._webcam_diagnostics(); return; }
     const source = { mouse: 'player input (mouse)', webcam: 'estimated from tracked motion',
       bot: 'bot launch conditions', equation: 'your challenge value', script: 'scripted' }[throwData.source] || throwData.source;
     const momentum = config.BALL_MASS * throwData.speed;
@@ -968,7 +968,26 @@ export class Game {
     lines.push(`L = ${ball.angular_momentum.toFixed(2)} kg m^2/s   revs ${ball.revolutions.toFixed(1)}`);
     if (this.mode.gate !== modes.GATE_NONE || this.last_result === null) lines.push(`source: ${source}`);
     else lines.push(`pins ${this.last_result.pins}   (${source})`);
+    lines.push(...this._webcam_diagnostics());
     this._physics_lines = lines;
+  }
+
+  // Live webcam diagnostics for the physics readout (the game's existing
+  // development readout). Compact on purpose: tracking state, delegate, the
+  // selected arm and the swing telemetry the detector is acting on.
+  _webcam_diagnostics() {
+    if (this.input_mode !== 'webcam') return [];
+    const status = this._webcam_status;
+    if (!status) return [];
+    const delegate = status.delegate ? ` [${status.delegate}]` : '';
+    const state = status.error ? 'error'
+      : (!status.running ? 'starting' : (status.tracked ? 'tracking' : 'searching'));
+    const lines = [
+      `WEBCAM ${state}${delegate}   conf ${(Number(status.confidence) * 100).toFixed(0)}%   fps ${Number(status.fps).toFixed(0)}   frame ${status.frame_count}`,
+      `phase ${status.phase}   arm ${status.arm}   ${status.telemetry || 'no swing telemetry yet'}`,
+    ];
+    if (status.error) lines.push(String(status.error));
+    return lines;
   }
 
   // ==== Shadow rig ====
@@ -1105,6 +1124,7 @@ export class Game {
     this._webcam_panel_update(webcam);
     updateCamera(this.ball, this.state, dt);
     this._overlay_update(dt);
+    if (this.input_mode === 'webcam' && this._physics_visible()) this._update_physics_readout();
     this._hud();
     this._update_motion(dt, false);
     // The card is applied last so nothing the motion layer shows this frame can

@@ -124,6 +124,12 @@ export const TRACKING_MIN_DETECTION_CONFIDENCE = 0.5;
 export const TRACKING_MIN_PRESENCE_CONFIDENCE = 0.5;
 export const TRACKING_MIN_TRACKING_CONFIDENCE = 0.5;
 export const TRACKING_MODEL_FILENAME = "pose_landmarker_lite.task";
+// Browser-only watchdogs. The Python service counts failed frame reads
+// (TRACKING_MAX_READ_FAILURES); a browser camera instead either opens and
+// never delivers frames or stops delivering them mid-session, so the webcam
+// service reports those as explicit errors after these grace periods.
+export const TRACKING_FRAME_TIMEOUT = 10.0;        // s to wait for the first camera frame
+export const TRACKING_STALL_TIMEOUT = 5.0;         // s without a new frame before reporting a stall
 
 // --- Webcam input integration ---
 export const WEBCAM_MIRROR = true;

@@ -21,14 +21,28 @@ export function webcamFeedbackLines(status) {
   if (!status) return [];
   if (status.error) return [[`Webcam: unavailable - ${status.error}`, RED]];
   if (!status.running) return [['Webcam: starting camera and pose model...', GRAY]];
+  const delegate = status.delegate ? ` [${status.delegate}]` : '';
   let lines;
   if (status.tracked) {
-    lines = [[`Webcam: tracking OK (${Math.round(status.confidence * 100)}% confidence)   arm: ${status.arm || 'auto'}`, GREEN],
+    lines = [[`Webcam: tracking OK (${Math.round(status.confidence * 100)}% confidence)${delegate}   arm: ${status.arm || 'auto'}`, GREEN],
              [`Phase: ${status.phase_label}`, status.phase === 'ready' ? YELLOW : GREEN]];
+  } else if (!status.frame_count) {
+    // The camera is open but the pose model has not produced a frame yet:
+    // saying "no person detected" here would blame the player for a camera
+    // that is still starting.
+    const message = String(status.message || '');
+    const label = message.includes('loading pose model')
+      ? 'camera connected - loading pose model...'
+      : (message.includes('starting camera')
+        ? 'starting camera - allow access if the browser asks...'
+        : 'camera connected - waiting for the first frame...');
+    lines = [[`Webcam: ${label}`, GRAY],
+             [`Phase: ${status.phase_label}`, GRAY]];
   } else {
-    if (status.lost_seconds === null || status.lost_seconds === undefined) lines = [['Webcam: no person detected - stand in view', RED]];
-    else lines = [[`Webcam: tracking lost (${status.lost_seconds.toFixed(1)}s) - step back into view`, RED]];
-    lines.push([`Phase: ${status.phase_label}`, GRAY]);
+    const lost = status.lost_seconds === null || status.lost_seconds === undefined;
+    lines = [[lost ? 'Webcam: no person detected - stand in view'
+      : `Webcam: tracking lost (${status.lost_seconds.toFixed(1)}s) - step back into view`, RED],
+             [`Phase: ${status.phase_label}`, GRAY]];
   }
   if (status.hint) lines.push([status.hint, GRAY]);
   if (status.telemetry) lines.push([status.telemetry, [140, 145, 160]]);

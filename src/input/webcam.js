@@ -36,11 +36,19 @@ const MEDIAPIPE_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10
 
 function clamp(v, low, high) { return Math.max(low, Math.min(high, v)); }
 
+function numberOr(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export function makeWebcamStatus(data = {}) {
   return {
     running: false, tracked: false, confidence: 0.0, fps: 0.0, error: null,
     phase: 'waiting', phase_label: 'Waiting for ready position', hint: '',
-    lost_seconds: null, telemetry: '', arm: 'auto', ...data,
+    lost_seconds: null, telemetry: '', arm: 'auto',
+    message: '', frame_count: 0, delegate: null, ...data,
   };
 }
 
@@ -68,17 +76,32 @@ export function eventToThrow(event, mirror = null) {
 }
 
 export class TrackingService {
-  constructor() {
+  constructor(options = {}) {
     this._snapshot = makeWebcamStatus({ message: 'not started' });
     this._landmarker = null;
     this._video = null;
     this._stream = null;
     this._running = false;
+    this._starting = false;
+    // Every start/stop bumps the generation; a start that is still awaiting a
+    // permission prompt or a model download when stop() (or a new start)
+    // arrives must never leave a camera running behind the game's back.
+    this._generation = 0;
     this._frameCount = 0;
     this._lastTrackedAt = null;
     this._lostFrames = 0;
     this._fpsTimes = [];
     this._preferredIndex = null;
+    this._delegate = null;                 // 'GPU' or 'CPU' (diagnostics)
+    this._lastVideoTime = -1;              // currentTime of the last processed frame
+    this._watchdogVideoTime = -1;
+    this._startedAt = 0;
+    this._progressAt = 0;
+    this._watchdog = null;
+    this._frameTimeoutMs = numberOr(options.frame_timeout_ms,
+      config.TRACKING_FRAME_TIMEOUT * 1000);
+    this._stallTimeoutMs = numberOr(options.stall_timeout_ms,
+      config.TRACKING_STALL_TIMEOUT * 1000);
   }
 
   get is_running() { return this._running; }
@@ -105,44 +128,113 @@ export class TrackingService {
   }
 
   async start() {
-    if (this._running) return;
+    if (this._running || this._starting) return;
+    const generation = ++this._generation;
+    this._starting = true;
     // Clear any error from a previous attempt before opening the camera, or
     // the play screen would see the stale failure and switch back to mouse
-    // before this attempt has a chance to succeed.
-    this._publish({ running: true, error: null, message: 'starting camera...' });
+    // before this attempt has a chance to succeed. The counters are reset the
+    // same way tracking/service.py does in start().
+    this._frameCount = 0;
+    this._lostFrames = 0;
+    this._fpsTimes = [];
+    this._lastTrackedAt = null;
+    this._publish({
+      running: true, error: null, message: 'starting camera...',
+      tracked: false, confidence: 0.0, landmarks: {}, fps: 0.0,
+      frame_count: 0, lost_frames: 0, last_tracked_at: null, frame: null,
+    });
+    let stream = null;
+    let video = null;
+    const releaseLocal = () => {
+      try { if (video) video.srcObject = null; } catch (_e) {}
+      try { if (stream) stream.getTracks().forEach((t) => t.stop()); } catch (_e) {}
+    };
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('camera not available in this browser');
+        throw new Error('camera access needs a secure context (HTTPS or localhost) and a browser with getUserMedia');
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: await this._videoConstraints(),
         audio: false,
       });
+      if (generation !== this._generation) { releaseLocal(); return; }
       this._stream = stream;
-      const video = document.createElement('video');
+      video = document.createElement('video');
       video.muted = true;
       video.playsInline = true;
       video.srcObject = stream;
-      await video.play();
+      await this._playVideo(video);
+      if (generation !== this._generation) { releaseLocal(); return; }
       this._video = video;
       this._publish({ message: 'camera open; loading pose model...' });
-      await this._loadLandmarker();
-      this._publish({ message: 'tracking' });
+      const landmarker = await this._loadLandmarker();
+      if (generation !== this._generation) {
+        try { landmarker.close(); } catch (_e) {}
+        releaseLocal();
+        return;
+      }
+      this._landmarker = landmarker;
+      this._publish({ message: 'tracking', delegate: this._delegate });
       this._running = true;
-      this._loop();
+      this._startedAt = performance.now();
+      this._progressAt = this._startedAt;
+      this._watchdogVideoTime = -1;
+      this._lastVideoTime = -1;      // the first delivered frame is processed
+      this._armWatchdog(generation);
+      this._loop(generation);
     } catch (e) {
-      this._publish({ running: false, error: String(e && e.message ? e.message : e), message: 'tracking unavailable' });
+      if (generation !== this._generation) { releaseLocal(); return; }
+      this._publish({
+        running: false, error: this._friendlyError(e), message: 'tracking unavailable',
+      });
       this._cleanup();
+    } finally {
+      if (generation === this._generation) this._starting = false;
     }
   }
 
-  async _loadLandmarker() {
+  // ``video.play()`` can hang forever when a camera opens but never delivers a
+  // frame (some virtual cameras, a device held by another app). Without a
+  // deadline the whole webcam mode would sit at "starting camera..." with no
+  // error and no way back to the mouse, so the wait is bounded.
+  async _playVideo(video) {
+    const timeoutMs = this._frameTimeoutMs;
+    let timer = null;
+    const timeout = new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(
+        `camera opened but delivered no frames after ${Math.round(timeoutMs / 1000)}s - close other apps using the camera and retry`)), timeoutMs);
+    });
+    try {
+      await Promise.race([video.play(), timeout]);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
+  }
+
+  _friendlyError(error) {
+    const text = String((error && error.message) || error || 'unknown error');
+    if (/notallowed|permission|denied/i.test(text)) {
+      return 'camera permission denied - allow camera access for this site '
+        + '(click the camera icon in the address bar), then retry';
+    }
+    if (/failed to fetch dynamically imported module|importing a module script failed|networkerror|load failed/i.test(text)) {
+      return 'could not load the MediaPipe pose runtime (network/CDN) - check the connection and retry';
+    }
+    return text;
+  }
+
+  // Creates and returns a pose landmarker. The GPU delegate is preferred, but
+  // many real machines fail to create it (no WebGL2, driver quirks); in that
+  // case the CPU delegate runs the exact same model, just slower, instead of
+  // disabling webcam mode outright.
+  async _loadLandmarker(options = {}) {
     const vision = await import(`${MEDIAPIPE_CDN}/vision_bundle.mjs`);
     const fileset = await vision.FilesetResolver.forVisionTasks(`${MEDIAPIPE_CDN}/wasm`);
-    this._landmarker = await vision.PoseLandmarker.createFromOptions(fileset, {
+    const buildOptions = (delegate) => ({
       baseOptions: {
         modelAssetPath: 'assets/models/pose_landmarker_lite.task',
-        delegate: 'GPU',
+        delegate,
       },
       runningMode: 'VIDEO',
       numPoses: 1,
@@ -150,37 +242,118 @@ export class TrackingService {
       minPosePresenceConfidence: config.TRACKING_MIN_PRESENCE_CONFIDENCE,
       minTrackingConfidence: config.TRACKING_MIN_TRACKING_CONFIDENCE,
     });
+    const preferred = options.delegate || 'GPU';
+    try {
+      const landmarker = await vision.PoseLandmarker.createFromOptions(fileset, buildOptions(preferred));
+      this._delegate = preferred;
+      return landmarker;
+    } catch (error) {
+      if (preferred === 'CPU') throw error;
+      const landmarker = await vision.PoseLandmarker.createFromOptions(fileset, buildOptions('CPU'));
+      this._delegate = 'CPU';
+      return landmarker;
+    }
   }
 
   _cleanup() {
+    if (this._watchdog !== null) { clearInterval(this._watchdog); this._watchdog = null; }
     if (this._stream) {
       try { this._stream.getTracks().forEach((t) => t.stop()); } catch (_e) {}
       this._stream = null;
     }
+    if (this._video) { try { this._video.srcObject = null; } catch (_e) {} }
     this._video = null;
     if (this._landmarker) { try { this._landmarker.close(); } catch (_e) {} this._landmarker = null; }
+    this._delegate = null;
+    this._lastVideoTime = -1;
+    this._watchdogVideoTime = -1;
   }
 
   async stop() {
+    this._generation += 1;      // a start still in flight must not resurrect
+    this._starting = false;
     this._running = false;
     this._cleanup();
     this._publish({ running: false, message: 'stopped', frame: null });
   }
 
+  // Reports a camera that never started delivering frames, or stopped doing
+  // so mid-session, as a normal error so the play screen can explain it and
+  // fall back to the mouse. Runs off its own timer: the processing loop is
+  // paced by requestAnimationFrame and would itself be paused in a hidden tab.
+  _armWatchdog(generation) {
+    if (this._watchdog !== null) { clearInterval(this._watchdog); this._watchdog = null; }
+    this._watchdogVideoTime = this._video ? this._video.currentTime : -1;
+    const interval = Math.min(500, Math.max(50, Math.floor(this._stallTimeoutMs / 2)));
+    this._watchdog = setInterval(() => {
+      if (generation !== this._generation || !this._running) return;
+      const video = this._video;
+      if (!video) return;
+      const now = performance.now();
+      if (typeof document !== 'undefined' && document.hidden) {
+        // A hidden tab pauses the rAF processing loop; that is the game's own
+        // throttling, not a camera fault, so no timeout accrues while hidden.
+        this._startedAt = now;
+        this._progressAt = now;
+        return;
+      }
+      if (video.currentTime !== this._watchdogVideoTime) {
+        this._watchdogVideoTime = video.currentTime;
+        this._progressAt = now;
+      }
+      if (this._frameCount === 0) {
+        if (now - this._startedAt > this._frameTimeoutMs) {
+          this._fail(`camera opened but delivered no frames after ${Math.round(this._frameTimeoutMs / 1000)}s - close other apps using the camera and retry`);
+        }
+      } else if (now - this._progressAt > this._stallTimeoutMs) {
+        this._fail('camera stopped delivering frames - check the webcam and retry');
+      }
+    }, interval);
+  }
+
+  _fail(message) {
+    this._running = false;
+    this._publish({ running: false, error: message, message: 'tracking unavailable' });
+    this._cleanup();
+  }
+
   _publish(changes) { this._snapshot = { ...this._snapshot, ...changes }; }
 
-  async _loop() {
-    while (this._running) {
+  async _loop(generation) {
+    let cpuRetried = false;
+    while (this._running && generation === this._generation) {
       const video = this._video;
-      if (!video || video.readyState < 2) { await new Promise((r) => setTimeout(r, 16)); continue; }
+      const landmarker = this._landmarker;
+      if (!video || !landmarker || video.readyState < 2) { await sleep(16); continue; }
+      // One inference per delivered camera frame: this loop runs at the
+      // display rate, and reprocessing an unchanged frame would double the
+      // inference cost for no extra information.
+      if (video.currentTime === this._lastVideoTime) {
+        await new Promise((r) => requestAnimationFrame(r));
+        continue;
+      }
+      this._lastVideoTime = video.currentTime;
       const now = performance.now();
       let result = null;
       try {
-        result = this._landmarker.detectForVideo(video, now);
+        result = landmarker.detectForVideo(video, now);
       } catch (e) {
-        this._publish({ running: false, error: `pose detection failed: ${e}`, message: 'tracking unavailable' });
-        this._running = false;
-        this._cleanup();
+        // A GPU delegate can also fail after creation on real machines
+        // (driver reset, lost WebGL context). Rebuild once on the CPU
+        // delegate before giving up on webcam mode.
+        if (this._delegate === 'GPU' && !cpuRetried) {
+          cpuRetried = true;
+          try {
+            const previous = this._landmarker;
+            this._landmarker = null;
+            if (previous) { try { previous.close(); } catch (_e2) {} }
+            this._landmarker = await this._loadLandmarker({ delegate: 'CPU' });
+            this._publish({ delegate: 'CPU' });
+            continue;
+          } catch (_e2) { /* fall through to the fatal path below */ }
+        }
+        if (generation !== this._generation) break;
+        this._fail(`pose detection failed: ${e}`);
         break;
       }
       this._frameCount += 1;
@@ -314,6 +487,8 @@ export class WebcamInput {
       error: snapshot.error, phase: this._detector.phase,
       phase_label: this._detector.label, hint: this._detector.hint,
       lost_seconds: lostSeconds, telemetry, arm: this.preferred_arm,
+      message: snapshot.message || '', frame_count: snapshot.frame_count || 0,
+      delegate: snapshot.delegate || null,
     });
   }
 

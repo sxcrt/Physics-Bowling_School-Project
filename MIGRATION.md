@@ -210,7 +210,7 @@ checked in the browser build.
 | Stroke direction → release yaw; sideways speed → hook | ✔ | the same drag produced `yaw +2.0°`, `hook −0.69 rad/s` |
 | `MIN_DRAG_DISTANCE` / `MIN_THROW_SPEED` release gates | ✔ | ported |
 | Seeded `ReleaseNoise` (off by default) | ✔ | ported |
-| Webcam pose → swing detector → throw (full phase machine) | ✔ (ported; camera unavailable in this environment) | detector ported 1:1; the no-camera path was exercised and falls back to mouse with the message |
+| Webcam pose → swing detector → throw (full phase machine) | ✔ | recorded real-person MediaPipe traces replay through the browser detector and the real page (`tools/webcam_fixture_check.js`: one swing → one launch, waving → none); live MediaPipe inference drives the service end-to-end; the no-camera path falls back to mouse with the message |
 | `TAB` / `1` / `2` input switching, `C` throwing-arm cycle | ✔ | ported and reachable |
 | Turn handoff (mouse ENTER/click; webcam ready-pose progress) | ✔ | banner + progress bar + ENTER confirmed in-browser |
 | Hand menu navigation (experimental, off by default) | ✔ | ported (dwell cursor), settings toggle |
@@ -429,10 +429,18 @@ python tools/dump_facade.py                            # original facade stats
 
 ## 7. Remaining issues
 
-* **Webcam release timing on a real human swing** is unverified here for the
-  same reason it was unverified in the original: no camera was available in this
-  environment. The detector is a 1:1 port, and the failure path (no camera,
-  tracking lost, mid-swing jump) is exercised.
+* **Webcam release timing on a real human swing** is verified against recorded
+  footage rather than a live human in front of this machine's camera: the same
+  MediaPipe model the browser runs was executed over real-person videos and the
+  resulting landmark traces drive the ported detector both in Node
+  (`tools/js_tests.mjs`, fixtures exported by `tools/export_landmarks.py`) and
+  through the real browser service (`tools/webcam_fixture_check.js`). Live
+  inference was verified in the browser with the actual `getUserMedia` → 
+  `TrackingService` → game path fed by those videos; a human standing in front
+  of a webcam on the deployment is the remaining unverified step. A fast hand
+  wave that starts from a held, arms-down ready pose can satisfy the detector's
+  documented "short swing" path - the original Python detector shares the same
+  behaviour and thresholds.
 * **The browser deployment is configured but not live-verified.** No Vercel
   credentials or linked project exist in this environment, and the GitHub remote
   is not reachable from it, so the repository-side configuration is complete and
