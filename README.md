@@ -100,6 +100,11 @@ node   tools/fidelity_compare.mjs tools/physics_py.json tools/physics_js.json
 python tools/fidelity_dump2.py tools/logic_py.json
 node   tools/fidelity_run2.mjs tools/logic_js.json
 node   tools/fidelity_compare2.mjs tools/logic_py.json tools/logic_js.json
+
+# webcam pipeline parity against the original Python detector
+python tools/webcam_parity_dump.py tools/webcam_parity_py.json
+node   tools/webcam_parity_run.mjs tools/webcam_parity_js.json
+node   tools/webcam_parity_compare.mjs tools/webcam_parity_py.json tools/webcam_parity_js.json
 ```
 
 The original Python suite still applies to the Python build:

@@ -133,9 +133,9 @@ export class ResultsOverlay extends Overlay {
     this.totalScore.style.cssText = `position:absolute;left:640px;transform:translateX(-50%);font-size:52px;font-weight:900;color:${css(PALETTE.amber)};`
       + `text-shadow:0 0 24px ${cssA([96, 226, 255], 0.5)};`;
     this.achievement = el('div', '', this.root, '');
-    this.achievement.style.cssText = `position:absolute;left:640px;transform:translateX(-50%);font-size:32px;font-weight:900;color:${css(PALETTE.amber)};display:none;`;
+    this.achievement.style.cssText = `position:absolute;left:640px;transform:translateX(-50%);font-size:32px;font-weight:900;line-height:1.05;color:${css(PALETTE.amber)};display:none;`;
     this.achievementSub = el('div', '', this.root, '');
-    this.achievementSub.style.cssText = `position:absolute;left:640px;transform:translateX(-50%);font-size:15px;color:rgb(176,184,210);display:none;`;
+    this.achievementSub.style.cssText = `position:absolute;left:640px;transform:translateX(-50%);font-size:15px;line-height:1.2;color:rgb(176,184,210);display:none;`;
 
     const mk = (label, accent, fn) => makeButton(this.root, label, {
       w: this._widthPx * 0.76, h: 40, radius: 10, accent, variant: 'secondary', fontPx: 16, onClick: fn,
@@ -177,7 +177,7 @@ export class ResultsOverlay extends Overlay {
     this.totalCaption.style.top = `${top + 75}px`;
     this.totalScore.style.top = `${top + 92}px`;
     this.achievement.style.top = `${top + 156}px`;
-    this.achievementSub.style.top = `${top + 192}px`;
+    this.achievementSub.style.top = `${top + 194}px`;
   }
   show(total = null, startFrom = null) {
     this.setTotal(total, startFrom);

@@ -3,8 +3,9 @@
 import * as modes from '../game/modes.js';
 import { DIFFICULTIES, INPUT_MODES, RUSH_DURATIONS } from '../game/settings.js';
 import { PLAYER_COLORS } from '../game/session.js';
-import { COLORS, LAYOUT, SIZES, TYPE_PX, PALETTE, css, cssA, brighten } from './theme.js';
+import { COLORS, LAYOUT, SIZES, TYPE_PX, PALETTE, MODE_ICONS, css, cssA, brighten } from './theme.js';
 import { div, el, button as makeButton } from './dom.js';
+import { iconNode } from './icons.js';
 import { Screen } from './screens.js';
 
 function backdrop(parent) {
@@ -57,6 +58,14 @@ export class MenuScreen extends Screen {
       if (item.gap) {
         const spacer = div('', bar);
         spacer.style.cssText = `width:${SIZES.hint_group - SIZES.hint_gap}px;`;
+        continue;
+      }
+      if (item.icon !== undefined) {
+        const tile = el('div', 'hint-icon', bar);
+        tile.style.cssText = `height:${SIZES.keycap_h}px;min-width:${SIZES.keycap_min_w}px;padding:0 6px;`
+          + `border-radius:${SIZES.keycap_radius}px;background:rgba(255,255,255,0.20);border:1px solid rgba(255,255,255,0.50);`
+          + 'color:#fff;display:flex;align-items:center;justify-content:center;box-sizing:border-box;';
+        tile.appendChild(iconNode(item.icon, { size: SIZES.keycap_h - 8, color: '#fff' }));
         continue;
       }
       if (item.key !== undefined) {
@@ -142,7 +151,7 @@ export class MainMenuScreen extends MenuScreen {
       variant: 'ghost', fontPx: SIZES.quit_font, onClick: () => this.app.quit(),
     });
     this.hintBar([
-      { key: '\u2190' }, { key: '\u2192' }, { text: 'menu' }, { gap: true },
+      { icon: 'arrow_left' }, { icon: 'arrow_right' }, { text: 'menu' }, { gap: true },
       { key: 'ENTER' }, { text: 'select' }, { gap: true },
       { key: 'A' }, { key: 'D' }, { text: 'move your feet' }, { gap: true },
       { text: 'drag the ball to throw' },
@@ -167,13 +176,25 @@ export class MainMenuScreen extends MenuScreen {
     const sync = (current) => {
       buttons.forEach((b, i) => {
         const active = options[i] === current;
+        b._active = active;
         b.style.background = active ? cssA(COLORS.cyan, 0.9) : 'transparent';
         b.style.color = active ? css(COLORS.ink) : css(COLORS.text_dim);
       });
     };
     for (const option of options) {
       const b = el('div', '', node, option.toUpperCase());
-      b.style.cssText = 'padding:8px 18px;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:1px;';
+      b.style.cssText = 'padding:8px 18px;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;'
+        + 'letter-spacing:1px;transition:background 0.12s ease,color 0.12s ease,transform 0.1s ease;';
+      b.addEventListener('pointerenter', () => {
+        if (!b._active) b.style.background = 'rgba(255,255,255,0.08)';
+      });
+      b.addEventListener('pointerleave', () => {
+        if (!b._active) b.style.background = 'transparent';
+      });
+      b.addEventListener('pointerdown', () => { b.style.transform = 'scale(0.97)'; });
+      const settle = () => { b.style.transform = 'none'; };
+      b.addEventListener('pointerup', settle);
+      b.addEventListener('pointercancel', settle);
       b.addEventListener('click', () => { onChange(option); sync(option); });
       buttons.push(b);
     }
@@ -199,21 +220,40 @@ export class ModeSelectScreen extends MenuScreen {
       row.style.cssText = `position:absolute;left:${SIZES.list_x}px;top:${SIZES.list_y + index * (SIZES.row_h + SIZES.row_gap)}px;`
         + `width:${SIZES.list_w}px;height:${SIZES.row_h}px;border-radius:12px;display:flex;align-items:center;`
         + `padding:0 16px;gap:16px;cursor:pointer;box-sizing:border-box;background:${cssA(COLORS.card, 0.9)};`
-        + `border:1px solid ${cssA(COLORS.hairline, 1)};`;
+        + `border:1px solid ${cssA(COLORS.hairline, 1)};`
+        + 'transition:transform 0.12s ease,background 0.12s ease,border-color 0.12s ease,box-shadow 0.14s ease;';
       const tile = div('mode-tile', row);
+      const accent = modes.pickerModes()[index].ball_rgb;
       tile.style.cssText = `width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;`
-        + `font-size:15px;font-weight:900;color:${css(modes.pickerModes()[index].ball_rgb)};`
-        + `background:${cssA([20, 16, 46], 1)};box-shadow:inset 0 0 0 2px ${cssA(modes.pickerModes()[index].ball_rgb, 0.7)};`;
-      tile.textContent = mode.motif;
+        + `background:${cssA([20, 16, 46], 1)};box-shadow:inset 0 0 0 2px ${cssA(accent, 0.7)};`;
+      tile.appendChild(iconNode(MODE_ICONS[mode.id] || 'pin', { size: 24, color: css(accent) }));
       const label = el('div', '', row, mode.title);
       label.style.cssText = 'font-size:18px;font-weight:700;color:#fff;letter-spacing:1px;';
       // The selected row carries a filled check at its right edge
       // (ui/theme.py ModeRow).
-      const badge = el('div', '', row, '\u2713');
+      const badge = el('div', '', row);
       badge.style.cssText = `margin-left:auto;width:20px;height:20px;border-radius:10px;flex:none;`
-        + `display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;`
-        + `background:${css(mode.ball_rgb)};color:${css(COLORS.ink)};visibility:hidden;`;
+        + `display:flex;align-items:center;justify-content:center;`
+        + `background:${css(mode.ball_rgb)};color:${css(COLORS.ink)};visibility:hidden;`
+        + 'transition:transform 0.14s ease,opacity 0.14s ease;transform:scale(0.6);opacity:0;';
+      badge.appendChild(iconNode('check', { size: 13, color: css(COLORS.ink) }));
       row._badge = badge;
+      row.addEventListener('pointerenter', () => {
+        if (index === this.selectedBall) return;
+        row.style.background = cssA(COLORS.card_high, 0.9);
+        row.style.borderColor = cssA(mode.ball_rgb, 0.6);
+        row.style.transform = 'translateX(2px)';
+      });
+      row.addEventListener('pointerleave', () => {
+        if (index === this.selectedBall) return;
+        row.style.background = cssA(COLORS.card, 0.9);
+        row.style.borderColor = cssA(COLORS.hairline, 1);
+        row.style.transform = 'none';
+      });
+      row.addEventListener('pointerdown', () => {
+        if (index === this.selectedBall) return;
+        row.style.transform = 'translateX(2px) scale(0.99)';
+      });
       row.addEventListener('click', () => {
         this.selectedBall = index;
         this.app.play('menu_move');
@@ -227,17 +267,19 @@ export class ModeSelectScreen extends MenuScreen {
     this.detail.style.cssText = `position:absolute;left:${SIZES.detail_x}px;top:${SIZES.list_y}px;width:${SIZES.detail_w}px;`
       + `height:${this._listHeight()}px;border-radius:16px;background:${cssA(COLORS.panel, 0.92)};`
       + `border:1px solid transparent;border-image:linear-gradient(90deg, rgba(62,201,232,0.6), rgba(255,61,139,0.6)) 1;`
-      + `padding:${SIZES.detail_pad}px;box-sizing:border-box;`;
+      + `padding:${SIZES.detail_pad}px;box-sizing:border-box;overflow:hidden;`;
     this.detailTitle = el('div', '', this.detail, '');
-    this.detailTitle.style.cssText = 'font-size:32px;font-weight:900;color:#fff;';
+    this.detailTitle.style.cssText = 'font-size:32px;font-weight:900;color:#fff;line-height:1.05;';
     this.detailTagline = el('div', '', this.detail, '');
-    this.detailTagline.style.cssText = `font-size:18px;color:${css(COLORS.cyan)};margin-top:8px;`;
+    this.detailTagline.style.cssText = `font-size:18px;color:${css(COLORS.cyan)};margin-top:8px;line-height:1.05;`;
     this.detailDesc = el('div', '', this.detail, '');
-    this.detailDesc.style.cssText = `font-size:17px;color:${css(COLORS.text_dim)};margin-top:14px;line-height:1.4;`;
+    this.detailDesc.style.cssText = `font-size:17px;color:${css(COLORS.text_dim)};margin-top:12px;line-height:1.3;`;
     this.detailRules = el('div', '', this.detail, '');
-    this.detailRules.style.cssText = 'margin-top:18px;display:flex;flex-wrap:wrap;gap:8px;';
+    this.detailRules.style.cssText = 'margin-top:18px;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start;';
+    this.detailRule = div('mode-detail-rule', this.detail);
+    this.detailRule.style.cssText = `margin-top:18px;height:1px;flex:none;background:${cssA(COLORS.hairline, 1)};`;
     this.setupHeading = el('div', '', this.detail, '');
-    this.setupHeading.style.cssText = `font-size:14px;font-weight:700;letter-spacing:3px;color:${css(COLORS.cyan)};margin-top:22px;`;
+    this.setupHeading.style.cssText = `font-size:14px;font-weight:700;letter-spacing:3px;color:${css(COLORS.cyan)};margin-top:18px;line-height:1.05;flex:none;`;
     this.setupBox = div('setup-box', this.detail);
     this.setupBox.style.cssText = 'margin-top:10px;display:flex;flex-direction:column;gap:10px;';
 
@@ -273,17 +315,83 @@ export class ModeSelectScreen extends MenuScreen {
       row.style.background = cssA(selected ? COLORS.card_high : COLORS.card, 0.94);
       row.style.borderColor = cssA(selected ? mode.ball_rgb : COLORS.hairline, 1);
       row.style.transform = selected ? 'translateX(4px)' : 'none';
-      if (row._badge) row._badge.style.visibility = selected ? 'visible' : 'hidden';
+      if (row._badge) {
+        row._badge.style.visibility = selected ? 'visible' : 'hidden';
+        row._badge.style.transform = selected ? 'scale(1)' : 'scale(0.6)';
+        row._badge.style.opacity = selected ? '1' : '0';
+      }
     });
     this.detailTitle.textContent = mode.title;
     this.detailTagline.textContent = mode.subtitle;
     this.detailDesc.textContent = mode.description;
+    this._fitDetail();
+  }
+
+  // Lay the detail panel out top-to-bottom, squeezing only as far as needed
+  // (ui/menu_screens.py `_relayout_detail`): the section gaps tighten
+  // 18 -> 12, the setup rows shrink 44 -> 36, and the trailing rule chips are
+  // dropped rather than clipped or allowed to escape the panel. Text itself is
+  // never shrunk.
+  _fitDetail() {
+    const mode = this.mode;
+    const panel = this.detail;
+    const chips = (mode.rules || []).slice(0, 5);
+    const measurable = panel.offsetParent !== null && panel.clientHeight > 0;
+    const attempts = [
+      { gap: 18, rowH: 44, rowGap: 16 },
+      { gap: 16, rowH: 40, rowGap: 8 },
+      { gap: 14, rowH: 38, rowGap: 8 },
+      { gap: 12, rowH: 36, rowGap: 6 },
+    ];
+    for (const attempt of attempts) {
+      this._applyDetailGaps(attempt.gap, attempt.rowGap);
+      let count = chips.length;
+      for (;;) {
+        this._renderDetailChips(chips.slice(0, Math.max(1, count)));
+        this._renderSetup(mode, attempt.rowH);
+        if (!measurable || this._detailOverflow() <= 0.5 || count <= 1) break;
+        count -= 1;
+      }
+      if (!measurable || this._detailOverflow() <= 0.5) break;
+    }
+  }
+
+  _applyDetailGaps(gap, rowGap) {
+    this.detailDesc.style.marginTop = `${Math.max(10, gap - 4)}px`;
+    this.detailRules.style.marginTop = `${gap}px`;
+    this.detailRule.style.marginTop = `${gap}px`;
+    this.setupHeading.style.marginTop = `${gap}px`;
+    this.setupBox.style.marginTop = '16px';
+    this.setupBox.style.gap = `${rowGap}px`;
+  }
+
+  _detailOverflow() {
+    const panelRect = this.detail.getBoundingClientRect();
+    if (panelRect.height <= 0) return 0;
+    // The stage is CSS-scaled to the window, so the design-pixel padding has to
+    // be converted with the panel's own scale for the comparison to behave the
+    // same at every window size.
+    const scale = panelRect.width > 0 ? panelRect.width / SIZES.detail_w : 1;
+    const pad = SIZES.detail_pad * scale;
+    let bottom = panelRect.top + pad;
+    for (const child of this.detail.children) {
+      const rect = child.getBoundingClientRect();
+      if (rect.height > 0) bottom = Math.max(bottom, rect.bottom);
+    }
+    return bottom - (panelRect.bottom - pad);
+  }
+
+  _renderDetailChips(rules) {
     this.detailRules.innerHTML = '';
-    for (const rule of mode.rules.slice(0, 5)) {
-      const chip = el('div', '', this.detailRules, rule);
-      chip.style.cssText = `font-size:14px;color:${css(COLORS.amber)};padding:6px 12px;border-radius:8px;`
+    for (const rule of rules) {
+      const chip = el('div', 'mode-rule-chip', this.detailRules, rule);
+      chip.style.cssText = `font-size:14px;line-height:1.25;color:${css(COLORS.amber)};padding:4px 10px;`
+        + `border-radius:8px;max-width:100%;box-sizing:border-box;white-space:normal;`
         + `background:${cssA(COLORS.amber, 0.10)};border:1px solid ${cssA(COLORS.amber, 0.25)};align-self:flex-start;`;
     }
+  }
+
+  _renderSetup(mode, rowHeight) {
     // setup
     this.setupBox.innerHTML = '';
     this.setupHeading.textContent = 'MATCH SETUP';
@@ -293,7 +401,7 @@ export class ModeSelectScreen extends MenuScreen {
         this.playerCount = Math.max(low, Math.min(high, this.playerCount + dir));
         this.app.play('menu_move');
         this._sync();
-      }));
+      }, COLORS.cyan, rowHeight));
     }
     if (mode.allow_bot) {
       this.setupBox.appendChild(this._stepper('BOT LEVEL', this.difficulty.toUpperCase(), (dir) => {
@@ -304,7 +412,7 @@ export class ModeSelectScreen extends MenuScreen {
         this.app.saveSettings();
         this.app.play('menu_move');
         this._sync();
-      }, COLORS.purple));
+      }, COLORS.purple, rowHeight));
     }
     if (mode.timed) {
       this.setupBox.appendChild(this._stepper('DURATION', this._durationText(), (dir) => {
@@ -315,7 +423,7 @@ export class ModeSelectScreen extends MenuScreen {
         this.app.saveSettings();
         this.app.play('menu_move');
         this._sync();
-      }, COLORS.amber));
+      }, COLORS.amber, rowHeight));
     }
     const editable = mode.allow_bot || high > low;
     if (editable) {
@@ -326,9 +434,12 @@ export class ModeSelectScreen extends MenuScreen {
         const entry = document.createElement('input');
         entry.type = 'text';
         entry.maxLength = 12;
+        entry.setAttribute('autocomplete', 'off');
+        entry.setAttribute('aria-label', `Player ${i + 1} name`);
         const def = mode.allow_bot && i === 0 ? 'YOU' : `PLAYER ${i + 1}`;
         entry.value = this.app.playerName(i, def);
-        entry.style.cssText = `flex:1 1 0;min-width:0;padding:10px 14px;border-radius:10px;font-size:16px;background:${cssA(COLORS.card, 1)};`
+        entry.style.cssText = `flex:1 1 0;min-width:0;height:${Math.max(32, rowHeight - 6)}px;padding:0 14px;box-sizing:border-box;`
+          + `border-radius:10px;font-size:16px;background:${cssA(COLORS.card, 1)};`
           + `border:1px solid ${cssA(COLORS.hairline, 1)};color:#fff;outline:none;`;
         entry.addEventListener('change', () => this.app.setPlayerName(i, entry.value));
         names.push(entry);
@@ -343,9 +454,9 @@ export class ModeSelectScreen extends MenuScreen {
     } else if (!this.setupBox.children.length) {
       // The "no extra setup" state: a gear inline with one dim line.
       const note = div('setup-empty', this.setupBox);
-      note.style.cssText = 'display:flex;align-items:center;gap:16px;padding:12px 4px;color:#cfcbea;font-size:16px;';
-      const gear = el('div', '', note, '\u2699');
-      gear.style.cssText = 'font-size:22px;color:#cfcbea;line-height:1;';
+      note.style.cssText = `display:flex;align-items:center;gap:16px;padding:4px;min-height:${Math.max(26, rowHeight - 14)}px;`
+        + 'color:#cfcbea;font-size:16px;';
+      note.appendChild(iconNode('gear', { size: 20, color: css(COLORS.text_dim) }));
       el('div', '', note, 'No extra setup. Press START to bowl.');
     }
   }
@@ -354,20 +465,23 @@ export class ModeSelectScreen extends MenuScreen {
     const seconds = Math.floor(this.duration - minutes * 60);
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }
-  _stepper(label, value, onStep, accent = COLORS.cyan) {
+  _stepper(label, value, onStep, accent = COLORS.cyan, rowHeight = 44) {
     const row = div('stepper', this.setupBox);
-    row.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-radius:12px;`
+    row.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-sizing:border-box;`
+      + `min-height:${rowHeight}px;border-radius:12px;`
       + `background:${cssA(COLORS.card, 1)};border:1px solid ${cssA(COLORS.hairline, 1)};`;
     const name = el('div', '', row, label);
     name.style.cssText = 'font-size:16px;color:#fff;';
     const right = div('', row);
     right.style.cssText = 'display:flex;align-items:center;gap:10px;';
-    const left = el('div', '', right, '◄');
-    left.style.cssText = `cursor:pointer;color:${css(accent)};font-size:14px;`;
+    const left = el('div', '', right);
+    left.style.cssText = `cursor:pointer;display:flex;color:${css(accent)};`;
+    left.appendChild(iconNode('arrow_left', { size: 13, color: css(accent) }));
     const val = el('div', '', right, value);
     val.style.cssText = `font-size:16px;font-weight:700;color:${css(accent)};min-width:70px;text-align:center;`;
-    const rightArrow = el('div', '', right, '►');
-    rightArrow.style.cssText = `cursor:pointer;color:${css(accent)};font-size:14px;`;
+    const rightArrow = el('div', '', right);
+    rightArrow.style.cssText = `cursor:pointer;display:flex;color:${css(accent)};`;
+    rightArrow.appendChild(iconNode('arrow_right', { size: 13, color: css(accent) }));
     left.addEventListener('click', () => onStep(-1));
     rightArrow.addEventListener('click', () => onStep(1));
     return row;
@@ -588,7 +702,20 @@ export class SettingsScreen extends MenuScreen {
     const row = div('settings-row', parent);
     row.style.cssText = `min-height:${helper ? SIZES.settings_row_h_help : SIZES.settings_row_h}px;border-radius:12px;`
       + `background:${cssA(COLORS.card, 1)};border:1px solid ${cssA(COLORS.hairline, 1)};`
-      + 'display:flex;align-items:center;justify-content:space-between;padding:0 20px;box-sizing:border-box;cursor:pointer;';
+      + 'display:flex;align-items:center;justify-content:space-between;padding:0 20px;box-sizing:border-box;cursor:pointer;'
+      + 'transition:background 0.12s ease,border-color 0.12s ease,transform 0.1s ease;';
+    row.addEventListener('pointerenter', () => {
+      row.style.background = cssA(COLORS.card_high, 1);
+      row.style.borderColor = cssA(COLORS.cyan, 0.45);
+    });
+    row.addEventListener('pointerleave', () => {
+      row.style.background = cssA(COLORS.card, 1);
+      row.style.borderColor = cssA(COLORS.hairline, 1);
+      row.style.transform = 'none';
+    });
+    row.addEventListener('pointerdown', () => { row.style.transform = 'scale(0.995)'; });
+    row.addEventListener('pointerup', () => { row.style.transform = 'none'; });
+    row.addEventListener('pointercancel', () => { row.style.transform = 'none'; });
     row._left = div('', row);
     row._right = div('', row);
     row._right.style.cssText = 'display:flex;align-items:center;';
@@ -609,12 +736,14 @@ export class SettingsScreen extends MenuScreen {
   _stepperRow(parent, label, valueText, onStep, helper = '', accent = COLORS.cyan) {
     const row = this._rowBase(parent, helper);
     this._label(row, label);
-    const leftArrow = el('div', '', row._right, '\u25c4');
-    leftArrow.style.cssText = `margin-right:10px;color:${css(accent)};cursor:pointer;`;
+    const leftArrow = el('div', '', row._right);
+    leftArrow.style.cssText = `margin-right:10px;color:${css(accent)};cursor:pointer;display:flex;`;
+    leftArrow.appendChild(iconNode('arrow_left', { size: 13, color: css(accent) }));
     const val = el('div', '', row._right, valueText);
     val.style.cssText = `min-width:70px;text-align:center;font-size:${SIZES.settings_value}px;font-weight:700;color:${css(accent)};`;
-    const rightArrow = el('div', '', row._right, '\u25ba');
-    rightArrow.style.cssText = `margin-left:10px;color:${css(accent)};cursor:pointer;`;
+    const rightArrow = el('div', '', row._right);
+    rightArrow.style.cssText = `margin-left:10px;color:${css(accent)};cursor:pointer;display:flex;`;
+    rightArrow.appendChild(iconNode('arrow_right', { size: 13, color: css(accent) }));
     leftArrow.addEventListener('click', (e) => { e.stopPropagation(); onStep(-1); });
     rightArrow.addEventListener('click', (e) => { e.stopPropagation(); onStep(1); });
     row.addEventListener('click', () => onStep(1));

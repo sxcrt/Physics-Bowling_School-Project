@@ -5,6 +5,7 @@ import { fovPushIn, fovReset, updateCamera } from '../scene/camera.js';
 import { setShadowFocus } from '../scene/shadow.js';
 import { COLORS, css, cssA, wrapText } from './theme.js';
 import { div, el, button as makeButton } from './dom.js';
+import { iconNode } from './icons.js';
 import { Screen } from './screens.js';
 
 const READOUT = [
@@ -89,7 +90,20 @@ export class LabScreen extends Screen {
     for (const [key, label, _unit] of READOUT) {
       const row = div('live-row', this.livePanel);
       row.style.cssText = `display:flex;justify-content:space-between;padding:8px 12px;border-radius:10px;`
-        + `background:${cssA(COLORS.card, 1)};border:1px solid ${cssA(COLORS.hairline, 1)};cursor:pointer;margin-top:6px;`;
+        + `background:${cssA(COLORS.card, 1)};border:1px solid ${cssA(COLORS.hairline, 1)};cursor:pointer;margin-top:6px;`
+        + 'transition:background 0.12s ease,border-color 0.12s ease,transform 0.1s ease;';
+      row.addEventListener('pointerenter', () => {
+        row.style.background = cssA(COLORS.card_high, 1);
+        row.style.borderColor = cssA(COLORS.cyan, 0.5);
+      });
+      row.addEventListener('pointerleave', () => {
+        row.style.background = cssA(COLORS.card, 1);
+        row.style.borderColor = cssA(COLORS.hairline, 1);
+        row.style.transform = 'none';
+      });
+      row.addEventListener('pointerdown', () => { row.style.transform = 'scale(0.99)'; });
+      row.addEventListener('pointerup', () => { row.style.transform = 'none'; });
+      row.addEventListener('pointercancel', () => { row.style.transform = 'none'; });
       const name = el('div', '', row, label);
       name.style.cssText = `font-size:14px;color:${css(COLORS.grey)};`;
       const value = el('div', '', row, '0.00');
@@ -146,12 +160,14 @@ export class LabScreen extends Screen {
     const name = el('div', '', row, caption);
     name.style.cssText = `font-size:15px;color:${css(COLORS.cyan)};`;
     const right = div('', row);
-    const left = el('div', '', right, '◄');
-    left.style.cssText = `float:left;color:${css(COLORS.cyan)};margin-right:8px;`;
+    const left = el('div', '', right);
+    left.style.cssText = `float:left;color:${css(COLORS.cyan)};margin-right:8px;display:flex;`;
+    left.appendChild(iconNode('arrow_left', { size: 13, color: css(COLORS.cyan) }));
     const val = el('div', '', right, valueText());
     val.style.cssText = 'float:left;min-width:90px;text-align:center;font-size:15px;font-weight:700;color:#fff;';
-    const rightArrow = el('div', '', right, '►');
-    rightArrow.style.cssText = `float:left;color:${css(COLORS.cyan)};margin-left:8px;`;
+    const rightArrow = el('div', '', right);
+    rightArrow.style.cssText = `float:left;color:${css(COLORS.cyan)};margin-left:8px;display:flex;`;
+    rightArrow.appendChild(iconNode('arrow_right', { size: 13, color: css(COLORS.cyan) }));
     left.addEventListener('click', (e) => { e.stopPropagation(); onStep(-1); });
     rightArrow.addEventListener('click', (e) => { e.stopPropagation(); onStep(1); });
     row.addEventListener('click', () => onStep(1));

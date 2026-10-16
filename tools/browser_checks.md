@@ -9,19 +9,30 @@ a self-contained check you can paste into the browser console.
 * `tools/dom_audit.js` — paste it into the DevTools console (or evaluate it over
   CDP) and call `hellsAudit()`. It returns layout defects for the current
   screen: elements outside the 1280×720 stage, leaf text overlapping other leaf
-  text, clipped text, and buttons whose centre is not hit-testable. Read-only.
+  text, text clipped by its own box, content that escapes (and is clipped by) a
+  scrolling/hidden ancestor, text hidden behind an opaque overlay (or under a
+  video/canvas), and buttons whose centre is not hit-testable. Intentional
+  layering is whitelisted by name (`.screen-dim`, `.screen-vignette`,
+  `.brand-glow`, `.hint-strip`) and anything `pointer-events: none` is never
+  treated as obscuring text. Read-only.
 * `tools/browser_audit.js` — call `await window.hellsAuditRun()` for the full
   67-check regression sweep: the held RIGHT SHIFT scorecard, its agreement with
   the scoring engine as rendered, focus-loss handling, multiplayer cards,
   pins-mode cards, the shadow pipeline, every screen's layout, and the modal
   overlays. It mutates the game; run it on a throwaway load.
+* `tools/webcam_fixture_check.js` — call `await window.hellsWebcamFixtureRun()`
+  to drive the real `TrackingService` + `WebcamInput` + game loop with a
+  replayed recorded landmark trace behind a canvas `captureStream` camera: one
+  real swing must launch exactly one ball and real waving must launch none.
+  (It forces the main-thread pose engine, since the worker owns its own model.)
 * `tools/snapshot.js` — defines `hellsSnap(name)` and
   `hellsSnapZoom(name, x, y, w, h, scale)`, which composite the WebGL canvas and
   the DOM UI and POST the JPEG to `tools/snap_server.py`
   (`python tools/snap_server.py 8899 ./snaps`). The UI layer is rasterised by the
   browser itself through an SVG `<foreignObject>` — **not** by html2canvas, which
   re-implements layout and both misplaced absolutely positioned panels and
-  dropped spaces inside words, so its output could not be trusted.
+  dropped spaces inside words, so its output could not be trusted. The
+  composite works in a background tab, where a screenshot cannot be taken.
 * `tools/vercel_sim.py 8130` — serves exactly the file set Vercel would deploy,
   with the same redirects and cache headers, so the production artefact can be
   loaded and audited locally.

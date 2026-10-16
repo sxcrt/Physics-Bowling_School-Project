@@ -1,5 +1,7 @@
 // Screens and the screen manager (ported from ui/screens.py).
 import { div } from './dom.js';
+import { SIZES } from './theme.js';
+import { MOTION } from '../motion/config.js';
 
 export class Screen {
   constructor(app) {
@@ -26,16 +28,28 @@ export class Screen {
   hide() { this.root.style.display = 'none'; }
   onShow() {}
   beginEnter() {
+    // A short fade-and-rise makes a screen change feel like an action, but it
+    // never gates input: the screen is live immediately, only the paint eases.
     this._enterTime = 0.0;
     this._entering = true;
+    this._rises = !MOTION.reduce_motion;
     this.root.style.opacity = '0';
+    this.root.style.transform = this._rises ? `translateY(${SIZES.screen_enter_rise}px)` : 'none';
   }
   updateEnter(dt) {
     if (!this._entering) return;
     this._enterTime += dt;
-    const t = Math.min(1.0, this._enterTime / 0.18);
-    this.root.style.opacity = String(t);
-    if (t >= 1.0) { this._entering = false; this.root.style.opacity = '1'; }
+    const t = Math.min(1.0, this._enterTime / Math.max(0.01, SIZES.screen_enter));
+    const eased = 1 - (1 - t) * (1 - t) * (1 - t);
+    this.root.style.opacity = String(eased);
+    if (this._rises) {
+      this.root.style.transform = `translateY(${(1 - eased) * SIZES.screen_enter_rise}px)`;
+    }
+    if (t >= 1.0) {
+      this._entering = false;
+      this.root.style.opacity = '1';
+      this.root.style.transform = 'none';
+    }
   }
   update(dt) { this.updateEnter(dt); this.onUpdate(dt); }
   onUpdate() {}

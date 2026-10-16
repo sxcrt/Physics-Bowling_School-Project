@@ -201,3 +201,32 @@ processed frames; leave it off for normal play so the log stays small.
 * Thresholds have been validated with synthetic landmark sequences and a
   hardware sanity check (camera + model + idle run); full real-world swing
   accuracy still needs testing with a person in front of the camera.
+
+## 10. The browser build
+
+`src/input/swing.js` is this detector, ported unchanged (same constants from
+`src/config.js`, same smoothing, same phase machine). What differs is the
+runtime around it:
+
+* **Pose inference runs in a worker** (`src/input/pose_worker.js`), the
+  browser counterpart of `tracking/service.py`'s worker thread. The render
+  thread grabs one frame per *new* camera frame as an `ImageBitmap` and
+  transfers it to the worker, which owns the MediaPipe landmarker and posts
+  the results back, so pose detection never stalls the game. If the worker
+  cannot be created or the model cannot load there, the identical engine runs
+  on the main thread, paced by `video.currentTime` polling; a worker that dies
+  mid-session also falls back, so webcam mode never degrades to mouse-only
+  because of the engine. The delegate in use is published in the snapshot
+  (`GPU (worker)`, `CPU`, ...) and shown in the HUD/readout.
+* **Frame timestamps, not render frames, drive the detector.** Every snapshot
+  carries `frame_time` (the capture time of the frame it came from); the
+  input steps the detector with the delta between the camera frames it is
+  fed, exactly the interval a velocity estimate needs, even when the display
+  runs faster than the camera or the engine drops frames under load.
+* **Parity is tested**, not assumed: `tools/webcam_parity_dump.py` records the
+  Python detector's per-frame state and releases for recorded and synthetic
+  sequences, `tools/webcam_parity_run.mjs` replays the identical landmarks
+  through the browser detector, and `tools/webcam_parity_compare.mjs` diffs
+  the two (smoothed positions, velocities, lateral velocity, hand-source
+  switches, phases, release frames, throw parameters). `tools/js_tests.mjs`
+  runs the same comparison in CI-style form.

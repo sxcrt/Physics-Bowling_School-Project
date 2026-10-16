@@ -133,6 +133,7 @@ export class ParticlesFX {
     for (let i = 0; i < count; i++) {
       if (this.particles.length >= this.capacity) this.particles.shift().node.remove();
       const node = document.createElement('div');
+      node.className = 'motion-particle';
       node.style.cssText = 'position:absolute;width:6px;height:6px;border-radius:3px;pointer-events:none;';
       const c = colors[i % colors.length];
       node.style.background = `rgb(${c[0]},${c[1]},${c[2]})`;

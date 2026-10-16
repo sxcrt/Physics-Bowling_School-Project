@@ -611,20 +611,25 @@ testAsync('switching the throwing arm clears swing history without a throw', asy
     const service = {
       _snapshot: { running: true, tracked: true, confidence: 0.9, landmarks: {}, fps: 30, frame_count: 0, error: null, message: 'tracking' },
       is_running: true,
+      _frameTime: 0.0,
       snapshot() { return this._snapshot; },
       async start() { this.is_running = true; },
       async stop() { this.is_running = false; },
       setPreferredCamera() {},
       publish(landmarks) {
-        this._snapshot = { ...this._snapshot, tracked: true, confidence: 0.9, landmarks, frame_count: this._snapshot.frame_count + 1 };
+        // One camera frame per call, 1/30 s apart: the snapshot carries the
+        // frame's own timestamp, which is what now drives the detector's dt.
+        this._frameTime += DT;
+        this._snapshot = {
+          ...this._snapshot, tracked: true, confidence: 0.9, landmarks,
+          frame_count: this._snapshot.frame_count + 1, frame_time: this._frameTime,
+        };
       },
     };
     const input = new WebcamInput(service, new SwingDetector());
     input.setGameReady(true);
     const step = (landmarks) => {
       service.publish(landmarks);
-      // pin the processed-frame clock to the detector's nominal 30 fps
-      input._last_process_time = performance.now() / 1000 - DT;
       input.update();
     };
     // ready pose, then part-way into a backswing on the default arm
@@ -704,6 +709,253 @@ if (waveFixture) {
 } else {
   console.log('  (tools/webcam_wave_landmarks.json missing; run python tools/export_landmarks.py first)');
 }
+
+// ---------------------------------------------------------------------------
+section('webcam python parity (tools/webcam_parity_py.json)');
+// The Python reference dump (tools/webcam_parity_dump.py) records, per frame:
+// the smoothed hand offsets, both velocities, the lateral velocity, the hand
+// source, the phase, the release decisions and the final ThrowData. Replaying
+// it here proves the browser pipeline is the same pipeline, frame by frame -
+// the webcam counterpart of the physics fidelity diff.
+const parityPath = fileURLToPath(new URL('./webcam_parity_py.json', import.meta.url));
+if (fs.existsSync(parityPath)) {
+  const parity = JSON.parse(fs.readFileSync(parityPath, 'utf8'));
+  function parityPose(entry, names) {
+    if (!entry) return { landmarks: null, confidence: 0.0, tracked: false, timestamp: 0 };
+    const lm = {};
+    entry.forEach((values, index) => {
+      if (!values) return;
+      lm[names[index]] = { x: values[0], y: values[1], z: 0, visibility: values[2] };
+    });
+    let total = 0;
+    for (const name of KEY) total += lm[name] ? lm[name].visibility : 0;
+    return { landmarks: lm, confidence: total / KEY.length, tracked: true, timestamp: 0 };
+  }
+  function parityClose(a, b, tol = 1e-9) {
+    if (a === null || a === undefined || b === null || b === undefined) return a === b;
+    return Math.abs(a - b) <= tol * Math.max(1, Math.abs(a), Math.abs(b));
+  }
+  test('the browser detector reproduces the Python reference exactly', () => {
+    const mismatches = [];
+    for (const [name, sequence] of Object.entries(parity.sequences)) {
+      const detector = new SwingDetector();
+      const dt = 1.0 / (sequence.fps || 30.0);
+      let frame = 0;
+      const events = [];
+      sequence.landmarks.forEach((entry, index) => {
+        frame = index;
+        const event = detector.update(parityPose(entry, parity.landmarks), dt);
+        const ref = sequence.trace[index];
+        if (!parityClose(detector._time, ref.t)) mismatches.push(`${name} f${index} time`);
+        const depth = detector._swing_arm !== null && detector._torso_height > 0
+          ? Math.max(0.0, (detector._backswing_deepest_rel - detector._swing_start_rel) / detector._torso_height)
+          : 0.0;
+        if (!parityClose(depth, ref.depth, 1e-6)) mismatches.push(`${name} f${index} depth`);
+        if (detector.phase !== ref.phase) mismatches.push(`${name} f${index} phase ${detector.phase} vs ${ref.phase}`);
+        if ((detector._swing_arm || null) !== (ref.arm || null)) mismatches.push(`${name} f${index} arm`);
+        if (!parityClose(detector._rise, ref.rise)) mismatches.push(`${name} f${index} rise`);
+        if (!parityClose(detector._peak_up_speed, ref.peak)) mismatches.push(`${name} f${index} peak`);
+        if (!parityClose(detector.swing_pose, ref.pose)) mismatches.push(`${name} f${index} pose`);
+        for (const arm of ['right', 'left']) {
+          const a = detector._smooth[arm];
+          const b = ref.arms[arm];
+          if ((a === null) !== (b.sx === null)) mismatches.push(`${name} f${index} ${arm} presence`);
+          const fields = [['vel', detector._vel[arm], b.vel], ['raw', detector._raw_vel[arm], b.raw],
+            ['lat', detector._lateral_vel[arm], b.lat]];
+          for (const [field, value, wanted] of fields) {
+            if (!parityClose(value, wanted)) mismatches.push(`${name} f${index} ${arm}.${field} ${value} vs ${wanted}`);
+          }
+          if (detector._hand_source[arm] !== b.src) mismatches.push(`${name} f${index} ${arm}.src`);
+        }
+        if (event !== null) events.push({ frame: index, event });
+      });
+      assert.equal(events.length, sequence.events.length, `${name}: release count`);
+      events.forEach((entry, index) => {
+        const ref = sequence.events[index];
+        assert.ok(Math.abs(entry.frame - ref.frame) <= 1, `${name}: release frame`);
+        assert.equal(entry.event.arm, ref.arm, `${name}: arm`);
+        for (const field of ['up_speed', 'lateral_speed', 'hand_offset', 'rise', 'depth']) {
+          assert.ok(parityClose(entry.event[field], ref[field]),
+            `${name}: ${field} ${entry.event[field]} vs ${ref[field]}`);
+        }
+        const throwData = eventToThrow(entry.event);
+        const refThrow = sequence.throws[index];
+        for (const field of ['speed', 'lateral_position', 'launch_angle', 'spin_omega']) {
+          assert.ok(parityClose(throwData[field], refThrow[field]),
+            `${name}: throw ${field} ${throwData[field]} vs ${refThrow[field]}`);
+        }
+      });
+      assert.ok(mismatches.length === 0, mismatches.slice(0, 5).join(' | '));
+    }
+  });
+  test('the synthetic sequences cover the acceptance cases', () => {
+    const sequences = parity.sequences;
+    for (const name of ['still', 'lean', 'walk', 'wave']) {
+      assert.equal(sequences[name].events.length, 0, `${name} must not release`);
+    }
+    for (const name of ['swing_straight', 'swing_slow', 'swing_fast', 'swing_hook_left',
+      'swing_hook_right', 'swing_short', 'occlusion']) {
+      assert.equal(sequences[name].events.length, 1, `${name} must release once`);
+    }
+    assert.equal(sequences.tracking_lost.events.length, 0);
+    assert.equal(sequences.repeated.events.length, 3);
+    assert.equal(sequences.arm_switch.events.length, 2);
+    assert.equal(sequences.arm_switch.events[0].arm, 'right');
+    assert.equal(sequences.arm_switch.events[1].arm, 'left');
+  });
+  test('hook direction and swing intensity reach the throw parameters', () => {
+    const left = parity.sequences.swing_hook_left.throws[0];
+    const right = parity.sequences.swing_hook_right.throws[0];
+    const straight = parity.sequences.swing_straight.throws[0];
+    assert.ok(Math.abs(straight.spin_omega) < 1e-9, 'a straight release spins nothing');
+    assert.ok(left.spin_omega < 0 && right.spin_omega > 0, 'opposite hooks');
+    assert.ok(left.launch_angle > 0 && right.launch_angle < 0, 'opposite release yaw');
+    const slow = parity.sequences.swing_slow.throws[0];
+    const fast = parity.sequences.swing_fast.throws[0];
+    assert.ok(fast.speed > slow.speed, 'a harder swing throws faster');
+  });
+} else {
+  console.log('  (tools/webcam_parity_py.json missing; run python tools/webcam_parity_dump.py)');
+}
+
+// ---------------------------------------------------------------------------
+section('webcam tracking service (frame pacing and pose engines)');
+testAsync('the detector is stepped with camera frame times, not render frames', async () => {
+  await withBrowserStubs(async () => {
+    const service = {
+      _snapshot: { running: true, tracked: true, confidence: 0.9, landmarks: {}, fps: 25,
+        frame_count: 0, error: null, message: 'tracking', frame_time: null },
+      is_running: true,
+      snapshot() { return this._snapshot; },
+      async start() {}, async stop() {}, setPreferredCamera() {},
+      publish(landmarks, frameTime) {
+        this._snapshot = { ...this._snapshot, landmarks, frame_time: frameTime,
+          frame_count: this._snapshot.frame_count + 1 };
+      },
+    };
+    const input = new WebcamInput(service, new SwingDetector());
+    input.setGameReady(true);
+    service.publish(poseResult({ rightWristY: 0.60 }).landmarks, 1.0);
+    input.update();
+    service.publish(poseResult({ rightWristY: 0.66 }).landmarks, 1.1);   // 100 ms later
+    input.update();
+    const detector = input._detector;
+    // smoothed = 0.5*0.66 + 0.5*0.60 = 0.63; raw = (0.63-0.60)/0.1 = 0.30/s
+    assert.ok(Math.abs(detector._raw_vel.right - 0.30) < 1e-9,
+      `raw velocity must use the 100 ms camera gap, got ${detector._raw_vel.right}`);
+    assert.ok(Math.abs(detector._vel.right - 0.135) < 1e-9);
+    // ...and a render-rate assumption would have produced 0.18, not 0.135
+    assert.ok(Math.abs(detector._vel.right - 0.18) > 1e-3);
+  });
+});
+
+testAsync('a worker engine publishes frames and reports its delegate', async () => {
+  await withBrowserStubs(async (handle) => {
+    const savedBitmap = globalThis.createImageBitmap;
+    globalThis.createImageBitmap = async () => ({ close() {} });
+    try {
+      const service = new TrackingService({ stall_timeout_ms: 60000 });
+      const video = handle.videoFactory();
+      let posted = 0;
+      service._workerFactory = () => ({
+        onmessage: null, onerror: null,
+        postMessage(message) {
+          if (message.type === 'init') {
+            setTimeout(() => this.onmessage && this.onmessage({ data: { type: 'ready', delegate: 'GPU' } }), 1);
+          } else if (message.type === 'frame') {
+            posted += 1;
+            video.advance(1 / 30);
+            const timestamp = message.timestamp;
+            setTimeout(() => this.onmessage && this.onmessage({
+              data: { type: 'result', timestamp, inferMs: 4, landmarks: [] },
+            }), 1);
+          }
+        },
+        terminate() { this.terminated = true; },
+      });
+      handle.videoFactory = () => video;
+      service._useWorker = true;
+      await service.start();
+      assert.equal(service.snapshot().worker, true, 'the worker engine is used');
+      assert.equal(service.snapshot().delegate, 'GPU (worker)');
+      await sleepMs(80);
+      assert.ok(posted > 1, `frames were posted to the worker (${posted})`);
+      assert.ok(service.snapshot().frame_count > 1, 'results were published to the snapshot');
+      assert.ok(Number.isFinite(service.snapshot().frame_time), 'snapshots carry the frame time');
+      await service.stop();
+    } finally {
+      if (savedBitmap === undefined) delete globalThis.createImageBitmap;
+      else globalThis.createImageBitmap = savedBitmap;
+    }
+  });
+});
+
+testAsync('a worker that dies falls back to the main-thread engine', async () => {
+  await withBrowserStubs(async (handle) => {
+    const savedBitmap = globalThis.createImageBitmap;
+    globalThis.createImageBitmap = async () => ({ close() {} });
+    try {
+      const service = new TrackingService({ stall_timeout_ms: 60000 });
+      service._workerFactory = () => ({
+        onmessage: null, onerror: null,
+        postMessage(message) {
+          if (message.type === 'init') {
+            setTimeout(() => this.onmessage && this.onmessage({ data: { type: 'ready', delegate: 'CPU' } }), 1);
+          } else if (message.type === 'frame') {
+            // the engine dies mid-session
+            setTimeout(() => this.onerror && this.onerror({ message: 'worker died' }), 1);
+          }
+        },
+        terminate() {},
+      });
+      let mainStarted = false;
+      service._loadLandmarker = async () => {
+        mainStarted = true;
+        service._delegate = 'CPU';
+        return { detectForVideo: (video) => { video.advance(1 / 30); return { landmarks: [] }; }, close() {} };
+      };
+      await service.start();
+      assert.equal(service.snapshot().worker, true);
+      await sleepMs(120);
+      assert.equal(mainStarted, true, 'the main-thread engine took over');
+      assert.equal(service.snapshot().worker, false);
+      assert.ok(service.snapshot().frame_count > 1, 'frames are still processed');
+      assert.match(String(service.snapshot().engine_fallback), /worker died/);
+      await service.stop();
+    } finally {
+      if (savedBitmap === undefined) delete globalThis.createImageBitmap;
+      else globalThis.createImageBitmap = savedBitmap;
+    }
+  });
+});
+
+test('webcam power follows the swing position, never a stale peak', () => {
+  const service = {
+    _snapshot: { running: true, tracked: true, confidence: 0.9, landmarks: {}, fps: 30, frame_count: 0, error: null, message: 'tracking' },
+    is_running: true,
+    snapshot() { return this._snapshot; },
+    async start() {}, async stop() {}, setPreferredCamera() {},
+  };
+  const input = new WebcamInput(service, new SwingDetector());
+  const detector = input._detector;
+  // _smooth holds the hand offset *relative to the shoulders* (image y grows
+  // downwards), and input/webcam_input.py's power is max(0, swing_pose) with
+  // swing_pose = -offset / (0.35 * torso) clamped to [-1, 1].
+  detector._torso_height = 0.25;
+  const scale = 0.35 * 0.25;
+  detector._smooth.right = [0.0, 0.0];          // hand level with the shoulders
+  detector._peak_up_speed = 2.0;                // a swing in flight...
+  detector._vel.right = -2.0;                   // ...must not show up here
+  assert.equal(input.power, 0.0);
+  detector._smooth.right = [0.0, -scale];       // hand a full band above them
+  assert.equal(input.power, 1.0);
+  detector._smooth.right = [0.0, -0.8 * scale];
+  assert.ok(Math.abs(input.power - 0.8) < 1e-9, String(input.power));
+  // After a release the hand is back down, so the meter must fall back to the
+  // resting pose instead of staying at the peak upward speed.
+  detector._smooth.right = [0.0, 0.2];
+  assert.equal(input.power, 0.0);
+});
 
 // ---------------------------------------------------------------------------
 section('physics regression against the Python fidelity dump');

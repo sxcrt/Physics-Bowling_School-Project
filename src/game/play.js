@@ -968,25 +968,54 @@ export class Game {
     lines.push(`L = ${ball.angular_momentum.toFixed(2)} kg m^2/s   revs ${ball.revolutions.toFixed(1)}`);
     if (this.mode.gate !== modes.GATE_NONE || this.last_result === null) lines.push(`source: ${source}`);
     else lines.push(`pins ${this.last_result.pins}   (${source})`);
-    lines.push(...this._webcam_diagnostics());
-    this._physics_lines = lines;
+    // In webcam mode the live tracking diagnostics come first: they are what a
+    // developer watching the readout actually needs while a swing misbehaves,
+    // and the throw parameters below repeat themselves in the "last throw" line.
+    const webcamLines = this._webcam_diagnostics();
+    this._physics_lines = webcamLines.length ? [...webcamLines, ...lines] : lines;
   }
 
   // Live webcam diagnostics for the physics readout (the game's existing
-  // development readout). Compact on purpose: tracking state, delegate, the
-  // selected arm and the swing telemetry the detector is acting on.
+  // development readout, hidden unless the physics panel is on). One compact
+  // line per concern: capture/engine health, what the detector is measuring,
+  // the release decision, and the throw that came out - enough to identify a
+  // stuck phase, a starving camera or a rejected frame without dumping
+  // per-frame data.
   _webcam_diagnostics() {
     if (this.input_mode !== 'webcam') return [];
     const status = this._webcam_status;
     if (!status) return [];
-    const delegate = status.delegate ? ` [${status.delegate}]` : '';
+    const engine = status.delegate ? ` [${status.delegate}]` : '';
     const state = status.error ? 'error'
       : (!status.running ? 'starting' : (status.tracked ? 'tracking' : 'searching'));
+    const frameTime = Number(status.frame_time);
+    const clock = Number.isFinite(frameTime) ? `${frameTime.toFixed(2)}s` : '--';
     const lines = [
-      `WEBCAM ${state}${delegate}   conf ${(Number(status.confidence) * 100).toFixed(0)}%   fps ${Number(status.fps).toFixed(0)}   frame ${status.frame_count}`,
-      `phase ${status.phase}   arm ${status.arm}   ${status.telemetry || 'no swing telemetry yet'}`,
+      `WEBCAM ${state}${engine}   conf ${(Number(status.confidence) * 100).toFixed(0)}%`
+        + `   fps ${Number(status.fps).toFixed(0)}   frame ${status.frame_count} @ ${clock}`
+        + `   infer ${Number(status.infer_ms).toFixed(0)}ms   lost ${Number(status.lost_frames) || 0}`,
+      `phase ${status.phase}   arm ${status.arm}   hand ${status.hand || 'wrist'}`
+        + `   pose ${Number(status.swing_pose || 0).toFixed(2)}`
+        + `   rise ${Number(status.rise || 0).toFixed(2)}   depth ${Number(status.depth || 0).toFixed(2)}`,
+      `swing ${status.direction || 'still'} ${Math.abs(Number(status.speed) || 0).toFixed(2)}/s`
+        + `   peak ${Number(status.peak_up || 0).toFixed(2)}/s`
+        + `   release ${status.release_eligible ? 'armed' : 'not armed'}`
+        + (status.reject_reason ? `   last reject: ${status.reject_reason}` : ''),
     ];
+    const lastThrow = status.last_throw;
+    if (lastThrow) {
+      const signed = (value, digits) => `${value >= 0 ? '+' : ''}${Number(value).toFixed(digits)}`;
+      lines.push(`last throw  speed ${Number(lastThrow.speed).toFixed(2)} m/s`
+        + `   start x ${signed(lastThrow.lateral_position, 2)} m`
+        + `   yaw ${signed(lastThrow.launch_angle * 180 / Math.PI, 2)} deg`
+        + `   hook ${signed(lastThrow.spin_omega, 2)} rad/s`
+        + `   (${lastThrow.arm} arm, ${lastThrow.hand_source})`);
+    } else {
+      lines.push('last throw  none since the last reset');
+    }
+    if (status.hint) lines.push(status.hint);
     if (status.error) lines.push(String(status.error));
+    if (status.engine_fallback) lines.push(`pose engine: main thread (${status.engine_fallback})`);
     return lines;
   }
 

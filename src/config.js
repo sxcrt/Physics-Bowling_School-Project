@@ -124,12 +124,19 @@ export const TRACKING_MIN_DETECTION_CONFIDENCE = 0.5;
 export const TRACKING_MIN_PRESENCE_CONFIDENCE = 0.5;
 export const TRACKING_MIN_TRACKING_CONFIDENCE = 0.5;
 export const TRACKING_MODEL_FILENAME = "pose_landmarker_lite.task";
+export const TRACKING_MEDIAPIPE_CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 // Browser-only watchdogs. The Python service counts failed frame reads
 // (TRACKING_MAX_READ_FAILURES); a browser camera instead either opens and
 // never delivers frames or stops delivering them mid-session, so the webcam
 // service reports those as explicit errors after these grace periods.
 export const TRACKING_FRAME_TIMEOUT = 10.0;        // s to wait for the first camera frame
 export const TRACKING_STALL_TIMEOUT = 5.0;         // s without a new frame before reporting a stall
+export const TRACKING_ENGINE_TIMEOUT = 30.0;       // s to load the pose engine (worker or CDN)
+// Pose inference runs in a module worker so it can never stall the render
+// loop (the browser counterpart of tracking/service.py's worker thread); set
+// false to force the main-thread engine. The service falls back automatically
+// when workers are unavailable or the worker engine fails to start.
+export const TRACKING_USE_WORKER = true;
 
 // --- Webcam input integration ---
 export const WEBCAM_MIRROR = true;

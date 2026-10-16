@@ -1,5 +1,8 @@
 // Minimal DOM helpers for building the UI overlay.
 import { cssA, mixRgb } from './theme.js';
+// Only for the reduced-motion switch: buttons must not animate when the
+// player has asked the whole game to stop moving.
+import { MOTION } from '../motion/config.js';
 
 export function el(tag, className, parent, text) {
   const node = document.createElement(tag);
@@ -69,6 +72,10 @@ export function glowLabel(parent, text, { x = 0, y = 0, px = 17, rgb = [255, 255
 }
 
 // A rounded button plate (real click handler via onclick).
+//
+// Feedback is deliberate and quick: a hover lift, a pressed scale, a brighten,
+// and a focus ring for keyboard navigation. Reduced motion (the existing
+// settings switch) turns the movement off and keeps the colour feedback.
 export function button(parent, label, opts = {}) {
   const {
     x = 0, y = 0, w = 200, h = 56, radius = 12, accent = [62, 201, 232],
@@ -86,26 +93,33 @@ export function button(parent, label, opts = {}) {
   node.style.justifyContent = 'center';
   node.style.cursor = 'pointer';
   node.style.userSelect = 'none';
+  node.style.transition = 'transform 0.11s ease, filter 0.11s ease, box-shadow 0.16s ease';
+  node.style.willChange = 'transform';
   // The play screen's UI root disables pointer events so the canvas below
   // keeps receiving pointer moves; every real control has to opt back in.
   node.style.pointerEvents = 'auto';
   node.style.fontSize = `${fontPx}px`;
   node.style.fontWeight = 700;
   node.style.letterSpacing = `${tracking}px`;
+  const baseShadow = () => {
+    if (variant === 'primary') return `0 6px 24px ${cssA(accent, 0.35)}`;
+    if (variant === 'ghost') return `inset 0 0 0 1px ${cssA(accent, 0.4)}`;
+    return `inset 0 0 0 2px ${cssA(accent, 1)}`;
+  };
   if (variant === 'primary') {
     node.style.background = `linear-gradient(180deg, ${cssA(accent, 0.95)}, ${cssA(mixRgb(accent, [20, 10, 40], 0.45), 1)})`;
     node.style.color = '#fff';
-    node.style.boxShadow = `0 6px 24px ${cssA(accent, 0.35)}`;
+    node.style.boxShadow = baseShadow();
     node.textContent = label;
   } else if (variant === 'ghost') {
     node.style.background = cssA([28, 23, 69], 0.85);
     node.style.color = `rgb(${accent[0]},${accent[1]},${accent[2]})`;
-    node.style.boxShadow = `inset 0 0 0 1px ${cssA(accent, 0.4)}`;
+    node.style.boxShadow = baseShadow();
     node.textContent = label;
   } else {
     node.style.background = cssA([28, 23, 69], 1);
     node.style.color = '#fff';
-    node.style.boxShadow = `inset 0 0 0 2px ${cssA(accent, 1)}`;
+    node.style.boxShadow = baseShadow();
     node.textContent = label;
     node.style.textShadow = `0 0 10px ${cssA(accent, 0.5)}`;
   }
@@ -118,10 +132,43 @@ export function button(parent, label, opts = {}) {
     cap.style.border = '1px solid rgba(255,255,255,0.3)';
     cap.style.fontSize = '13px';
   }
-  node.addEventListener('mouseenter', () => { node.style.filter = 'brightness(1.12)'; });
-  node.addEventListener('mouseleave', () => { node.style.filter = 'none'; });
-  node.addEventListener('mousedown', () => { node.style.transform = 'scale(0.97)'; });
-  node.addEventListener('mouseup', () => { node.style.transform = 'none'; });
+  const reduceMotion = () => {
+    try {
+      // Imported lazily so this module stays usable without the motion layer.
+      return !!MOTION.reduce_motion;
+    } catch (_e) { return false; }
+  };
+  const rest = () => {
+    if (node._selected) return;               // the keyboard focus ring owns the look
+    node.style.transform = reduceMotion() ? 'none' : 'translateY(0)';
+    node.style.filter = 'none';
+    node.style.boxShadow = baseShadow();
+  };
+  node.addEventListener('pointerenter', () => {
+    if (node.enabled === false) return;
+    node.style.transform = reduceMotion() ? 'none' : 'translateY(-2px)';
+    node.style.filter = 'brightness(1.12)';
+    if (!node._selected) node.style.boxShadow = `${baseShadow()}, 0 6px 18px ${cssA(accent, 0.25)}`;
+  });
+  node.addEventListener('pointerleave', rest);
+  node.addEventListener('pointerdown', (e) => {
+    if (node.enabled === false) return;
+    // Visual only: the click handler below performs the action exactly once.
+    node.style.transform = reduceMotion() ? 'none' : 'scale(0.97)';
+    node.style.filter = 'brightness(1.2)';
+    if (e.pointerId !== undefined && node.setPointerCapture) {
+      try { node.setPointerCapture(e.pointerId); } catch (_err) { /* not capturable */ }
+    }
+  });
+  const release = () => {
+    if (node._selected) { node.style.transform = 'none'; node.style.filter = 'brightness(1.08)'; return; }
+    node.style.transform = reduceMotion() ? 'none' : 'translateY(0)';
+    node.style.filter = 'none';
+  };
+  node.addEventListener('pointerup', release);
+  node.addEventListener('pointercancel', release);
+  node.addEventListener('lostpointercapture', release);
+  window.addEventListener('blur', release);
   if (onClick) node.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
   node.onClick = onClick;
   node.enabled = true;
@@ -131,8 +178,7 @@ export function button(parent, label, opts = {}) {
       node.style.boxShadow = `0 0 0 2px ${cssA(accent, 0.9)}, 0 0 22px ${cssA(accent, 0.55)}`;
       node.style.filter = 'brightness(1.08)';
     } else {
-      node.style.boxShadow = variant === 'primary' ? `0 6px 24px ${cssA(accent, 0.35)}`
-        : (variant === 'ghost' ? `inset 0 0 0 1px ${cssA(accent, 0.4)}` : `inset 0 0 0 2px ${cssA(accent, 1)}`);
+      node.style.boxShadow = baseShadow();
       node.style.filter = 'none';
     }
   };

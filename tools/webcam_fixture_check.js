@@ -71,14 +71,17 @@
     const results = [];
     const check = (name, ok, detail = '') => results.push([name, !!ok, detail]);
 
-    // camera boundary: a canvas stream driven at the display rate
+    // camera boundary: a canvas stream driven by a timer (not rAF: a
+    // background tab never gets animation frames, and this check must be
+    // runnable wherever the page happens to be shown)
     const canvas = document.createElement('canvas');
     canvas.width = 640; canvas.height = 480;
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#123'; ctx.fillRect(0, 0, 640, 480);
-    let drawing = true;
-    const draw = () => { if (!drawing) return; ctx.fillStyle = `hsl(${(performance.now() / 20) % 360},40%,20%)`; ctx.fillRect(0, 0, 640, 480); requestAnimationFrame(draw); };
-    draw();
+    const drawTimer = setInterval(() => {
+      ctx.fillStyle = `hsl(${(performance.now() / 20) % 360},40%,20%)`;
+      ctx.fillRect(0, 0, 640, 480);
+    }, 25);
     const mediaDevices = navigator.mediaDevices;
     const originalGum = mediaDevices.getUserMedia;
     mediaDevices.getUserMedia = async () => canvas.captureStream(30);
@@ -87,6 +90,9 @@
     const throwOf = async (fixture, timeoutMs, expectThrow) => {
       const state = { frame: 0 };
       service._delegate = 'CPU';
+      // The fixture check replaces the pose engine with a replaying stub, so
+      // it must run the main-thread engine (the worker owns its own engine).
+      service._useWorker = false;
       service._loadLandmarker = async () => fixtureLandmarker(fixture, state);
       const detector = webcam._detector;
       const phases = [];
@@ -138,7 +144,7 @@
     } finally {
       mediaDevices.getUserMedia = originalGum;
       service._loadLandmarker = originalLoadLandmarker;
-      drawing = false;
+      clearInterval(drawTimer);
     }
 
     const failed = results.filter(([, ok]) => !ok);

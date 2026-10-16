@@ -139,10 +139,18 @@ assets/…                   unchanged (audio WAVs, pose model)
 8. **Webcam.** A `TrackingService` replaces `tracking/service.py`: same
    snapshot contract (`tracked`, `confidence`, `landmarks`, `fps`,
    `frame_count`, `last_tracked_at`, `error`, `frame`), same landmark names
-   (MediaPipe's 33), same confidence/visibility thresholds. `input/swing.py`'s
-   phase machine is ported unchanged, and `event_to_throw` maps a recognised
-   swing onto `ThrowData` with the same constants. The in-game feed panel shows
-   the live `<video>` (mirrored) with the skeleton drawn on a canvas.
+   (MediaPipe's 33), same confidence/visibility thresholds. Pose inference runs
+   in a module worker (`src/input/pose_worker.js`) - the browser counterpart of
+   the Python service's background thread - with an automatic fall back to the
+   same model on the main thread where workers are unavailable. Every snapshot
+   carries the *camera frame's* own timestamp (`frame_time`), so the detector
+   differentiates real elapsed time instead of a constant frame rate.
+   `input/swing.py`'s phase machine is ported unchanged, and `event_to_throw`
+   maps a recognised swing onto `ThrowData` with the same constants; the two
+   pipelines are compared frame by frame by `tools/webcam_parity_dump.py`,
+   `tools/webcam_parity_run.mjs` and `tools/webcam_parity_compare.mjs` (§4.5).
+   The in-game feed panel shows the live `<video>` (mirrored) with the skeleton
+   drawn on a canvas.
 
 9. **Settings** persist to `localStorage` under `hells-balls-settings` with the
    same defaults and the same validation as `game/settings.py`.
@@ -423,9 +431,35 @@ python tools/fidelity_dump2.py tools/logic_py.json     # scoring/challenges/ques
 node   tools/fidelity_run2.mjs tools/logic_js.json
 node   tools/fidelity_compare2.mjs tools/logic_py.json tools/logic_js.json
 
+python tools/webcam_parity_dump.py tools/webcam_parity_py.json   # webcam pipeline
+node   tools/webcam_parity_run.mjs tools/webcam_parity_js.json
+node   tools/webcam_parity_compare.mjs tools/webcam_parity_py.json tools/webcam_parity_js.json
+
 node   tools/check_methods.mjs                         # port sanity check
 python tools/dump_facade.py                            # original facade stats
 ```
+
+### 4.5 Webcam pipeline parity vs the original Python
+
+```
+> python tools/webcam_parity_dump.py tools/webcam_parity_py.json
+> node   tools/webcam_parity_run.mjs tools/webcam_parity_js.json
+> node   tools/webcam_parity_compare.mjs tools/webcam_parity_py.json tools/webcam_parity_js.json
+cases compared: 16
+mismatches: 0
+```
+
+Each case replays one landmark sequence through both detectors and compares the
+*per-frame* state (smoothed hand offsets, both smoothed and raw velocities, the
+lateral velocity, the hand-source fallback, the swing phase, `rise`/`depth`/
+`peak`, the release decision) and the recognised releases with the `ThrowData`
+they map to. Sequences: recorded real swing and recorded real waving (from
+`tools/webcam_landmarks.json*`), plus synthetic still, lean, walk, casual
+waving, a slow and a fast full swing, a left hook, a right hook, a straight
+release, a short swing, a mid-backswing occlusion (finger-landmark fallback),
+tracking loss mid-swing, three repeated swings and an arm switch. The same
+comparison runs inside `tools/js_tests.mjs` against the committed
+`tools/webcam_parity_py.json`.
 
 ## 7. Remaining issues
 
@@ -434,25 +468,66 @@ python tools/dump_facade.py                            # original facade stats
   MediaPipe model the browser runs was executed over real-person videos and the
   resulting landmark traces drive the ported detector both in Node
   (`tools/js_tests.mjs`, fixtures exported by `tools/export_landmarks.py`) and
-  through the real browser service (`tools/webcam_fixture_check.js`). Live
-  inference was verified in the browser with the actual `getUserMedia` → 
-  `TrackingService` → game path fed by those videos; a human standing in front
-  of a webcam on the deployment is the remaining unverified step. A fast hand
-  wave that starts from a held, arms-down ready pose can satisfy the detector's
-  documented "short swing" path - the original Python detector shares the same
-  behaviour and thresholds.
+  through the real browser service (`tools/webcam_fixture_check.js`). Inference
+  itself (worker engine, GPU delegate, live `getUserMedia` → `TrackingService` →
+  game, and the main-thread fallback) was run in the browser over a synthetic
+  camera feed; a human standing in front of a webcam on the deployment is the
+  remaining unverified step. A fast hand wave that starts from a held, arms-down
+  ready pose can satisfy the detector's documented "short swing" path - the
+  original Python detector shares the same behaviour and thresholds.
 * **The browser deployment is configured but not live-verified.** No Vercel
   credentials or linked project exist in this environment, and the GitHub remote
   is not reachable from it, so the repository-side configuration is complete and
   the production file set is verified locally (`tools/vercel_sim.py`) but no
   live URL has been checked.
 * **MediaPipe still comes from a CDN.** The webcam mode imports
-  `@mediapipe/tasks-vision` from jsDelivr on first use; the pose model itself
+  `@mediapipe/tasks-vision` from jsDelivr on first use (the worker engine
+  `importScripts` its wasm loader through a shim, because the package ships no
+  classic bundle); the pose model itself
   (`assets/models/pose_landmarker_lite.task`) is local. If that CDN is
   unreachable the game reports "Webcam unavailable" and switches to mouse, which
   is the same path a missing camera takes.
 * The original's Python test suite (378 tests) still applies to the Python
-  code; it was not ported to JavaScript. The browser build's equivalent
-  assurance is the fidelity diff suite above plus `tools/js_tests.mjs` and the
-  in-page `tools/browser_audit.js`, which compare the ported logic against the
-  Python originals and drive the real page respectively.
+  code; it was not ported to JavaScript (the full Python suite also takes about
+  30 minutes). The browser build's assurance is the fidelity diff suites
+  (physics, scoring/challenges/questions, **and the webcam pipeline**), the
+  regression suite `tools/js_tests.mjs` and the in-page `tools/browser_audit.js`
+  + `tools/dom_audit.js`, which compare the ported logic against the Python
+  originals and drive the real page respectively.
+
+## 8. Webcam, UI and interaction repair pass (October 2026)
+
+A later pass rebuilt the browser tracking pipeline around the original's
+behaviour and fixed the UI defects that pass found. It is documented in full in
+`docs/REPORT_WEBCAM_UI_PASS.md`; the short version:
+
+* **Pose inference moved off the render thread** (`src/input/pose_worker.js`).
+  The main thread captures one frame per *new* camera frame as an
+  `ImageBitmap` and transfers it to the worker; the worker owns the
+  MediaPipe landmarker (GPU, falling back to CPU) and posts results back. If
+  workers cannot load the model, the identical engine runs on the main thread
+  paced by `currentTime` polling; a worker that dies mid-session also falls
+  back, so webcam mode never drops to mouse-only because of the engine.
+* **Frame timestamps drive the detector.** Snapshots carry `frame_time` and the
+  swing detector is stepped with the delta between the *camera* frames it is
+  fed, not with the render-frame delta.
+* **Parity with the Python reference is a test, not a claim**:
+  `tools/webcam_parity_dump.py` → `tools/webcam_parity_run.mjs` →
+  `tools/webcam_parity_compare.mjs` compare 16 sequences (recorded real swings
+  and waving, plus synthetic still/lean/walk/wave/slow/fast/hook-left/
+  hook-right/short/occluded/lost/repeated/arm-switch cases) frame by frame:
+  smoothed positions, velocities, hand-source switches, phases, release frames
+  and the final `ThrowData`. Result: **0 mismatches**.
+* **UI**: the mode picker's detail panel now fits its content the way the
+  original does (squeeze, then drop trailing rule chips - never clip or
+  overlap); the mode rows, steppers, gear, check badge and hint arrows use the
+  original's ported vector icon set instead of text glyphs; buttons and rows
+  have hover/pressed/focus feedback and respect reduced motion; screens fade
+  and rise briefly.
+* **Text selection**: the stage is `user-select: none` with `mousedown` /
+  `selectstart` / `dragstart` suppressed outside real text fields, so dragging
+  to aim no longer highlights HUD labels; name/answer fields keep normal
+  selection, focus and typing.
+* **Audits**: `tools/dom_audit.js` now also flags content escaping a clipping
+  panel, text hidden behind an overlay, and text under a video/canvas, with
+  documented whitelists for intentional layering (backdrops, glows).

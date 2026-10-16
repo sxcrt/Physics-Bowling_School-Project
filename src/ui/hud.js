@@ -22,9 +22,10 @@ export function webcamFeedbackLines(status) {
   if (status.error) return [[`Webcam: unavailable - ${status.error}`, RED]];
   if (!status.running) return [['Webcam: starting camera and pose model...', GRAY]];
   const delegate = status.delegate ? ` [${status.delegate}]` : '';
+  const fps = Number(status.fps) > 0 ? `   ${Number(status.fps).toFixed(0)} fps` : '';
   let lines;
   if (status.tracked) {
-    lines = [[`Webcam: tracking OK (${Math.round(status.confidence * 100)}% confidence)${delegate}   arm: ${status.arm || 'auto'}`, GREEN],
+    lines = [[`Webcam: tracking OK (${Math.round(status.confidence * 100)}% confidence)${delegate}   arm: ${status.arm || 'auto'}${fps}`, GREEN],
              [`Phase: ${status.phase_label}`, status.phase === 'ready' ? YELLOW : GREEN]];
   } else if (!status.frame_count) {
     // The camera is open but the pose model has not produced a frame yet:
@@ -636,9 +637,9 @@ export class Hud {
     this._chipsTop = showTimer ? 144 : 126;
 
     this._updatePlayers(match, mode);
-    this._updateStatus(state, knockdowns, paused, match, handoffUp);
+    this._updateStatus(state, knockdowns, paused, match, handoffUp, webcamStatus, inputMode);
     this._updateWebcam(inputMode, webcamStatus);
-    this._updatePhysics(physicsLines, hideScorecard);
+    this._updatePhysics(physicsLines, hideScorecard, inputMode === 'webcam');
     this._updateQuestion(question, answerText, feedback, questionProgress, mode, state, hintsUnlocked, attemptsLeft, throwEarned);
     this._updateChallenge(challengeState, state);
     this._updateMessages(message, messageWarning, state);
@@ -742,7 +743,7 @@ export class Hud {
     }
   }
 
-  _updateStatus(state, knockdowns, paused, match, handoffUp = false) {
+  _updateStatus(state, knockdowns, paused, match, handoffUp = false, webcamStatus = null, inputMode = 'mouse') {
     // The handoff banner is the focused UI while the next bowler confirms; a
     // second "Next bowler" line in the HUD would just be a duplicate.
     this.status.style.display = (['question', 'challenge'].includes(state) || handoffUp) ? 'none' : 'block';
@@ -764,6 +765,19 @@ export class Hud {
       if (player && match && match.player_count > 1) text = `${player.name} to bowl`;
       else if (player && player.is_bot) text = `${player.name} is preparing...`;
       else text = 'Ready to throw';
+    }
+    // In webcam mode the throw is armed by the player's pose, so "Ready to
+    // throw" may only be shown while the tracker is actually feeding valid
+    // measurements - otherwise the line would promise something the input
+    // cannot do.
+    if (inputMode === 'webcam' && !paused && state === 'ready' && !(match && match.current_player && match.current_player.is_bot)) {
+      const status = webcamStatus;
+      if (!status || !status.running) text = 'Waiting for the camera...';
+      else if (status.error) text = 'Camera unavailable - press TAB for mouse controls';
+      else if (!status.tracked) text = 'Step into the camera view';
+      else if (status.phase === 'waiting') text = 'Hold still with your arms down';
+      else if (status.phase === 'ready') text = 'Ready to throw';
+      else text = status.phase_label || 'Ready to throw';
     }
     this.status.textContent = text;
     // Centred across the full stage: the box spans the stage and the text is
@@ -792,14 +806,16 @@ export class Hud {
     }
   }
 
-  _updatePhysics(physicsLines, halt = false) {
+  _updatePhysics(physicsLines, halt = false, webcamMode = false) {
     if (halt || !physicsLines || !physicsLines.length) {
       this.readout.style.display = 'none';
       this._readoutHasData = false;
       return;
     }
     const standalone = physicsLines.filter((line) => !line.startsWith('#'));
-    const text = standalone.slice(0, 3).join('\n');
+    // Webcam mode keeps the tracking diagnostics visible (they are prepended);
+    // every other mode shows the compact three-line physics summary.
+    const text = standalone.slice(0, webcamMode ? 7 : 3).join('\n');
     this.readout.textContent = text;
     const visible = !this.motion || !this.motion.hud || this.motion.hud._physicsVisible !== false;
     this.readout.style.display = visible ? 'block' : 'none';

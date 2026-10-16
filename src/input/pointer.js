@@ -70,17 +70,51 @@ export function uiFromClient(clientX, clientY, stage) {
   return Pointer.fromStage(cssX, cssY);
 }
 
+// Text selection must stay possible exactly where the player types (name
+// fields, the trivia / challenge answer fields); everywhere else a mouse drag
+// belongs to the game. Dragging to aim or throw used to sweep across HUD
+// labels and select them as if this were a document, so the stage's default
+// selection behaviour is switched off at the event level (the CSS in
+// index.html is the belt to this pair of braces).
+const SELECTABLE = 'input, textarea, select, [contenteditable="true"], .allow-select';
+
+export function isSelectableTarget(target) {
+  if (!target || typeof target.closest !== 'function') return false;
+  return !!target.closest(SELECTABLE);
+}
+
 export function attachPointer(stage) {
   const set = (e) => {
     const [x, y] = uiFromClient(e.clientX, e.clientY, stage);
     _INSTANCE.position = [x, y];
     _INSTANCE.available = true;
   };
+  const release = () => { _INSTANCE.left = false; };
   window.addEventListener('pointermove', set, { passive: true });
   window.addEventListener('pointerdown', (e) => {
     set(e);
     if (e.button === 0) _INSTANCE.left = true;
   });
-  window.addEventListener('pointerup', (e) => { set(e); if (e.button === 0) _INSTANCE.left = false; });
-  window.addEventListener('blur', () => { _INSTANCE.left = false; });
+  window.addEventListener('pointerup', (e) => { set(e); if (e.button === 0) release(); });
+  // A pointer released outside the window, a touch cancelled by the browser,
+  // or the window losing focus must all end the drag: otherwise the ball stays
+  // "in hand" and the next click throws with a stale speed.
+  window.addEventListener('pointercancel', release);
+  window.addEventListener('blur', release);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
+  // No text selection starts outside a real text field: mousedown is where the
+  // browser arms its selection, and selectstart/dragstart cover the paths that
+  // do not go through a mousedown the page sees (middle-drag, native drag).
+  window.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || isSelectableTarget(e.target)) return;
+    e.preventDefault();
+  });
+  window.addEventListener('selectstart', (e) => {
+    if (isSelectableTarget(e.target)) return;
+    e.preventDefault();
+  });
+  window.addEventListener('dragstart', (e) => {
+    if (isSelectableTarget(e.target)) return;
+    e.preventDefault();
+  });
 }
