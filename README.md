@@ -101,9 +101,17 @@ python tools/fidelity_dump2.py tools/logic_py.json
 node   tools/fidelity_run2.mjs tools/logic_js.json
 node   tools/fidelity_compare2.mjs tools/logic_py.json tools/logic_js.json
 
-# webcam pipeline parity against the original Python detector
+# webcam temporal classifier against the shared labeled evaluation traces
+# (synthetic positives/negatives + the recorded real-human negative traces)
+node   tools/webcam_eval.mjs --verbose --sweep 200
+node   tools/webcam_eval.mjs --export tools/webcam_eval_sequences.json
+python tools/webcam_eval.py tools/webcam_eval_sequences.json
+
+# legacy webcam phase-machine parity against the original Python detector
+# (the low-level motion sensor; its shared release on exercise footage is
+# exactly why the classifier above owns the release decision)
 python tools/webcam_parity_dump.py tools/webcam_parity_py.json
-node   tools/webcam_parity_run.mjs tools/webcam_parity_js.json
+node   tools/webcam_parity_run.mjs tools/webcam_parity_py.json tools/webcam_parity_js.json
 node   tools/webcam_parity_compare.mjs tools/webcam_parity_py.json tools/webcam_parity_js.json
 ```
 
@@ -112,6 +120,11 @@ The original Python suite still applies to the Python build:
 ```bash
 python -m pytest tests -q
 ```
+
+A real human swing in front of a live camera is **not** covered by any of the
+automatic checks: the positive traces are synthetic and the recorded human
+traces are two negative motions (exercise and waving). See
+`docs/WEBCAM_MANUAL_TEST.md` for the manual validation procedure.
 
 ---
 

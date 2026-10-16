@@ -15,8 +15,7 @@
 //     a constant frame rate.
 import * as config from '../config.js';
 import { makeThrowData } from './mouse.js';
-import { SwingDetector } from './swing.js';
-import { SwingValidator } from './validate.js';
+import { SwingClassifier } from './classifier.js';
 
 export const LANDMARK_NAMES = [
   'nose', 'left_eye_inner', 'left_eye', 'left_eye_outer', 'right_eye_inner',
@@ -65,7 +64,7 @@ function modelUrl() {
 export function makeWebcamStatus(data = {}) {
   return {
     running: false, tracked: false, confidence: 0.0, fps: 0.0, error: null,
-    phase: 'waiting', phase_label: 'Waiting for ready position', hint: '',
+    phase: 'tracking', phase_label: 'Tracking', hint: '',
     lost_seconds: null, telemetry: '', arm: 'auto',
     message: '', frame_count: 0, delegate: null, session: 0, ...data,
   };
@@ -714,10 +713,9 @@ export class TrackingService {
 }
 
 export class WebcamInput {
-  constructor(service = null, detector = null, validator = null) {
+  constructor(service = null, classifier = null) {
     this._service = service || new TrackingService();
-    this._detector = detector || new SwingDetector();
-    this._validator = validator || new SwingValidator();
+    this._classifier = classifier || new SwingClassifier();
     this._pending = null;
     this._game_ready = false;
     this._last_frame_count = -1;
@@ -725,6 +723,7 @@ export class WebcamInput {
     this._session = null;
     this._stale_frames = 0;
     this._last_phase = null;
+    this._last_blocked = 0;
     this.last_throw = null;
     this.lateral = 0.0;
     this._lateral_smoothed = 0.0;
@@ -741,7 +740,7 @@ export class WebcamInput {
     }
     if (snapshot.running === false && !this._service.is_running) {
       // The camera is gone or stopped: an in-flight swing must not survive it.
-      if (this._detector.phase !== 'waiting' || this._pending !== null) this._reset_swing_state();
+      if (this._classifier.phase !== 'tracking' || this._pending !== null) this._reset_swing_state();
       return;
     }
     if (snapshot.frame_count !== this._last_frame_count) {
@@ -760,8 +759,7 @@ export class WebcamInput {
   discardPending() { this._pending = null; }
 
   _reset_swing_state() {
-    this._detector.reset();
-    this._validator.reset();
+    this._classifier.reset();
     this._pending = null;
     this._last_frame_count = -1;
     this._last_frame_time = null;
@@ -772,9 +770,9 @@ export class WebcamInput {
     ready = !!ready;
     if (ready === this._game_ready) return;
     this._game_ready = ready;
-    // Every transition resets the detector and the validator, so a swing that
-    // started while the ball was rolling can never leak into the next roll,
-    // and the player must return to the ready position before swings arm.
+    // Every transition resets the classifier, so a swing that started while
+    // the ball was rolling can never leak into the next roll, and the player
+    // must return to the ready position before swings arm.
     this._reset_swing_state();
   }
 
@@ -792,11 +790,11 @@ export class WebcamInput {
 
   get is_running() { return this._service.is_running; }
 
-  get preferred_arm() { return this._detector.preferred_arm; }
+  get preferred_arm() { return this._classifier.preferred_arm; }
   setPreferredArm(arm) {
-    this._detector.setPreferredArm(arm);
+    this._classifier.setPreferredArm(arm);
     // An arm-selection change mid-session must not let the previous swing
-    // continue: reset both layers.
+    // continue: reset the input layer too.
     this._reset_swing_state();
   }
   setPreferredCamera(index) {
@@ -817,20 +815,20 @@ export class WebcamInput {
     if (!snapshot.tracked && snapshot.last_tracked_at !== null && snapshot.last_tracked_at !== undefined) {
       lostSeconds = Math.max(0.0, performance.now() / 1000 - snapshot.last_tracked_at);
     }
-    const data = this._detector.telemetry;
+    const data = this._classifier.telemetry;
     let telemetry = '';
     if (config.WEBCAM_SHOW_TELEMETRY && data) {
       telemetry = `${data.arm[0].toUpperCase()} arm: ${data.direction} ${Math.abs(data.speed).toFixed(2)}/s   depth ${data.depth.toFixed(2)}   rise ${data.rise.toFixed(2)}`;
     }
-    // The swing position the avatar mirrors and the numbers the detector is
-    // acting on: enough to tell a real swing from a stuck phase without
+    // The swing position the avatar mirrors and the numbers the classifier is
+    // acting on: enough to tell a real swing from a stuck state without
     // dumping per-frame data anywhere near normal gameplay.
     const engine = snapshot.delegate ? String(snapshot.delegate) : null;
     return makeWebcamStatus({
       running: snapshot.running || this._service.is_running,
       tracked: snapshot.tracked, confidence: snapshot.confidence, fps: snapshot.fps,
-      error: snapshot.error, phase: this._detector.phase,
-      phase_label: this._detector.label, hint: this._detector.hint,
+      error: snapshot.error, phase: this._classifier.phase,
+      phase_label: this._classifier.label, hint: this._classifier.hint,
       lost_seconds: lostSeconds, telemetry, arm: this.preferred_arm,
       message: snapshot.message || '', frame_count: snapshot.frame_count || 0,
       delegate: engine, worker: !!snapshot.worker,
@@ -845,13 +843,16 @@ export class WebcamInput {
       peak_up: data ? Number(data.peak_up) || 0.0 : 0.0,
       swing_pose: this.swing_pose,
       release_eligible: this.releaseEligible,
-      reject_reason: this._detector.last_reject_reason || null,
+      reject_reason: this._classifier.last_reject_reason || null,
+      tracking_reason: this._classifier.tracking_reason || null,
+      other_ratio: data ? Number(data.other_ratio) || 0.0 : 0.0,
       last_throw: this.last_throw,
       engine_fallback: snapshot.engine_fallback || null,
-      // Deliberate-swing validation (developer readout only; the player HUD
-      // never shows these).
-      blocked_count: this._validator.blocked_count,
-      block_reason: this._validator.last_block_reason || null,
+      // Classifier rejection statistics (developer readout only; the player
+      // HUD never shows these).
+      blocked_count: this._classifier.blocked_count,
+      block_reason: this._classifier.last_reject_reason || null,
+      abort_count: this._classifier.abort_count,
       stale_frames: this._stale_frames,
       session: snapshot.session === undefined ? null : snapshot.session,
     });
@@ -860,43 +861,40 @@ export class WebcamInput {
   latestSnapshot() { return this._service.snapshot(); }
 
   get swing_pose() {
-    const pose = this._detector.swing_pose;
+    const pose = this._classifier.swing_pose;
     try { return Math.max(-1.0, Math.min(1.0, Number(pose))); } catch (_e) { return 0.0; }
   }
 
   get dragging() {
-    const phase = this._detector.phase;
+    const phase = this._classifier.phase;
     return ['backswing', 'forward', 'release'].includes(phase);
   }
 
-  // The swing's power so far, 0..1, exactly as input/webcam_input.py reports
-  // it: the detector's own progress value when it has one, else the hand's
-  // height above the shoulders (the mouse drag's equivalent).
+  // The swing's power so far, 0..1: the classifier's measured progress toward
+  // a release, else the hand's height above the shoulders.
   get power() {
-    let value = this._detector.release_progress;
+    let value = this._classifier.release_progress;
     if (value === undefined || value === null) value = Math.max(0.0, this.swing_pose);
     const number = Number(value);
     return Number.isFinite(number) ? clamp(number, 0.0, 1.0) : 0.0;
   }
 
-  // True when the forward swing has met every gate a release still needs.
+  // True when the forward stroke is underway and a release can still fire.
   get releaseEligible() {
-    const phase = this._detector.phase;
-    return phase === 'forward';
+    return this._classifier.phase === 'forward';
   }
 
   _processFrame(snapshot) {
-    // The detector is stepped with the *camera frame* time delta, not the
+    // The classifier is stepped with the *camera frame* time delta, not the
     // render frame delta: a snapshot can be a couple of render frames old when
     // the game reads it, and a fallback engine can sample slower than the
     // display. Both would distort the hand's velocity if the render clock were
-    // used. The first frame after arming has no interval yet (1/30, exactly
-    // like input/webcam_input.py).
+    // used. The first frame after arming has no interval yet (1/30).
     const frameTime = Number(snapshot.frame_time);
     const hasTime = Number.isFinite(frameTime) && frameTime > 0;
     if (hasTime && this._last_frame_time !== null && frameTime <= this._last_frame_time) {
       // A repeated or rewound camera frame carries stale pose data: it must
-      // never move the detector, and a run of them invalidates any swing in
+      // never move the classifier, and a run of them invalidates any swing in
       // flight (the camera stalled or restarted without a fresh timeline).
       this._stale_frames += 1;
       if (this._stale_frames > config.SWING_VALIDATE_MAX_STALE_FRAMES) this._reset_swing_state();
@@ -920,24 +918,17 @@ export class WebcamInput {
       landmarks: snapshot.landmarks, confidence: snapshot.confidence,
       tracked: snapshot.tracked, timestamp: frameTime || performance.now() / 1000,
     };
-    const event = this._detector.update(result, dt);
-    this._validator.observe(result, dt, this._detector);
-    this._last_phase = this._detector.phase;
-    if (event === null) return;
-    const verdict = this._validator.check(event);
-    if (!verdict.ok) {
-      // The phase machine recognized a release; the deliberate-swing gate did
-      // not accept it. Abort back to waiting so the rejected motion cannot
-      // leak into the next roll, and tell the player why.
-      this._detector.reject(verdict.reason);
-      this._last_phase = this._detector.phase;
-      if (config.SWING_VALIDATE_LOG_BLOCKED) {
-        try {
-          console.debug(`[hells-balls] webcam release blocked: ${verdict.reason}`);
-        } catch (_e) { /* console unavailable */ }
-      }
-      return;
+    const event = this._classifier.update(result, dt);
+    this._last_phase = this._classifier.phase;
+    // Surface blocked releases to the console (developer aid) without letting
+    // the classifier's internal counters touch the player HUD.
+    if (config.SWING_VALIDATE_LOG_BLOCKED && this._classifier.blocked_count !== this._last_blocked) {
+      this._last_blocked = this._classifier.blocked_count;
+      try {
+        console.debug(`[hells-balls] webcam release blocked: ${this._classifier.last_reject_reason}`);
+      } catch (_e) { /* console unavailable */ }
     }
+    if (event === null) return;
     if (this._pending !== null) return;
     const throwData = eventToThrow(event);
     this._pending = throwData;

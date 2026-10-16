@@ -4,7 +4,8 @@
 ``MouseInput`` does, so the game loop, ball launch, physics and scoring never
 learn which device produced a throw. It owns exactly one ``TrackingService``
 (camera capture + pose inference on a background thread) and one
-``SwingDetector`` (pure phase recognition).
+``SwingClassifier`` (the temporal movement classifier that recognizes the
+tracking -> ready -> backswing -> forward -> release sequence).
 
 The mapping from a recognized ``SwingEvent`` to the game's ``ThrowData`` is
 kept in ``event_to_throw`` and sized by SWING_SPEED_SCALE / WEBCAM_AIM_SCALE:
@@ -17,8 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import config
+from input.classifier import SwingClassifier
 from input.mouse_input import ThrowData
-from input.swing import SwingDetector
 from tracking.pose import PoseResult
 from tracking.service import TrackingService
 
@@ -101,15 +102,15 @@ class WebcamInput:
     """A ThrowSource backed by webcam body tracking.
 
     ``update()`` is called every rendered frame; it only advances the swing
-    detector when the tracking service has published a *new* camera frame, so
+    classifier when the tracking service has published a *new* camera frame, so
     inference is never duplicated. Throws are only generated while the game
     reports itself ready (``set_game_ready``), which also forces the player to
     re-establish the ready pose after every roll.
     """
 
-    def __init__(self, service=None, detector=None, clock=None, log_path=None):
+    def __init__(self, service=None, classifier=None, clock=None, log_path=None):
         self._service = service if service is not None else TrackingService()
-        self._detector = detector if detector is not None else SwingDetector()
+        self._classifier = classifier if classifier is not None else SwingClassifier()
         self._clock = clock if clock is not None else time.monotonic
         self._log_path = log_path
         self._last_phase = None
@@ -157,21 +158,21 @@ class WebcamInput:
         if ready == self._game_ready:
             return
         self._game_ready = ready
-        self._detector.reset()
+        self._classifier.reset()
         self._pending = None
         self._last_frame_count = -1
         self._last_process_time = None
-        self._last_rejected = getattr(self._detector, 'rejected_count', 0)
+        self._last_rejected = getattr(self._classifier, 'rejected_count', 0)
 
     # ---------------------------------------------------------- lifecycle
     def start(self):
         """Start camera capture and pose inference (background thread)."""
-        self._detector.reset()
+        self._classifier.reset()
         self._pending = None
         self._last_frame_count = -1
         self._last_process_time = None
         self._last_phase = None
-        self._last_rejected = getattr(self._detector, 'rejected_count', 0)
+        self._last_rejected = getattr(self._classifier, 'rejected_count', 0)
         self._frames_processed = 0
         self._open_log_session()
         self._service.start()
@@ -179,7 +180,7 @@ class WebcamInput:
     def stop(self):
         """Stop tracking and release the camera. Safe to call repeatedly."""
         self._service.stop()
-        self._detector.reset()
+        self._classifier.reset()
         self._pending = None
         self._log('--- session stop ---')
 
@@ -191,14 +192,14 @@ class WebcamInput:
     @property
     def preferred_arm(self):
         """Configured throwing arm: 'auto', 'left' or 'right'."""
-        return getattr(self._detector, 'preferred_arm', 'auto')
+        return getattr(self._classifier, 'preferred_arm', 'auto')
 
     def set_preferred_arm(self, arm):
         """Select the throwing arm and restart the gesture detector."""
-        setter = getattr(self._detector, 'set_preferred_arm', None)
+        setter = getattr(self._classifier, 'set_preferred_arm', None)
         if callable(setter):
             setter(arm)
-        self._detector.reset()
+        self._classifier.reset()
 
     def cycle_preferred_arm(self):
         """Rotate auto -> right -> left -> auto; returns the new selection."""
@@ -218,7 +219,7 @@ class WebcamInput:
             lost_seconds = max(0.0, time.monotonic() - snapshot.last_tracked_at)
         telemetry = ''
         if config.WEBCAM_SHOW_TELEMETRY:
-            data = getattr(self._detector, 'telemetry', None)
+            data = getattr(self._classifier, 'telemetry', None)
             if data:
                 telemetry = (f"{data['arm'][0].upper()} arm: {data['direction']} "
                              f"{abs(data['speed']):.2f}/s   depth {data['depth']:.2f}   "
@@ -229,9 +230,9 @@ class WebcamInput:
             confidence=snapshot.confidence,
             fps=snapshot.fps,
             error=snapshot.error,
-            phase=self._detector.phase,
-            phase_label=self._detector.label,
-            hint=self._detector.hint,
+            phase=self._classifier.phase,
+            phase_label=self._classifier.label,
+            hint=self._classifier.hint,
             lost_seconds=lost_seconds,
             telemetry=telemetry,
             arm=self.preferred_arm,
@@ -249,7 +250,7 @@ class WebcamInput:
         relative to the shoulders, so the character mirrors the player's real
         arm between the backswing and the release.
         """
-        pose = getattr(self._detector, 'swing_pose', 0.0)
+        pose = getattr(self._classifier, 'swing_pose', 0.0)
         try:
             return max(-1.0, min(1.0, float(pose)))
         except (TypeError, ValueError):          # pragma: no cover
@@ -258,7 +259,7 @@ class WebcamInput:
     @property
     def dragging(self):
         """True while a swing is armed (the ball is 'in hand')."""
-        phase = getattr(self._detector, 'phase', 'waiting')
+        phase = getattr(self._classifier, 'phase', 'tracking')
         return phase in ('backswing', 'forward', 'release')
 
     @property
@@ -269,7 +270,7 @@ class WebcamInput:
         threshold a release needs, which maps onto the meter exactly as the
         mouse drag's stroke speed does.
         """
-        value = getattr(self._detector, 'release_progress', None)
+        value = getattr(self._classifier, 'release_progress', None)
         if value is None:
             pose = self.swing_pose
             value = max(0.0, pose)
@@ -317,25 +318,25 @@ class WebcamInput:
             tracked=snapshot.tracked,
             timestamp=now,
         )
-        event = self._detector.update(result, dt)
-        summary = getattr(self._detector, 'telemetry_summary', None)
+        event = self._classifier.update(result, dt)
+        summary = getattr(self._classifier, 'telemetry_summary', None)
         summary = summary() if callable(summary) else ''
-        if self._detector.phase != self._last_phase:
-            self._log(f'phase -> {self._detector.phase}  [{summary}]  '
-                      f'({self._detector.hint})')
-            self._last_phase = self._detector.phase
+        if self._classifier.phase != self._last_phase:
+            self._log(f'phase -> {self._classifier.phase}  [{summary}]  '
+                      f'({self._classifier.hint})')
+            self._last_phase = self._classifier.phase
         # Log frames the detector refused to trust (jumps, loss, bad timing).
-        rejected = getattr(self._detector, 'rejected_count', 0)
+        rejected = getattr(self._classifier, 'rejected_count', 0)
         if rejected != self._last_rejected:
             self._last_rejected = rejected
-            reason = getattr(self._detector, 'last_reject_reason', 'unknown')
+            reason = getattr(self._classifier, 'last_reject_reason', 'unknown')
             self._log(f'frame rejected: {reason}  [{summary}]')
         self._frames_processed += 1
         if config.SWING_LOG_VERBOSE and config.SWING_LOG_EVERY_FRAMES > 0:
             if self._frames_processed % config.SWING_LOG_EVERY_FRAMES == 0:
                 self._log(f'frame {self._frames_processed}: [{summary}] '
                           f'conf={result.confidence:.2f} '
-                          f'phase={self._detector.phase}')
+                          f'phase={self._classifier.phase}')
         if event is not None and self._pending is None:
             throw = event_to_throw(event)
             self._pending = throw

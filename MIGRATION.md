@@ -453,28 +453,35 @@ Each case replays one landmark sequence through both detectors and compares the
 *per-frame* state (smoothed hand offsets, both smoothed and raw velocities, the
 lateral velocity, the hand-source fallback, the swing phase, `rise`/`depth`/
 `peak`, the release decision) and the recognised releases with the `ThrowData`
-they map to. Sequences: recorded real swing and recorded real waving (from
-`tools/webcam_landmarks.json*`), plus synthetic still, lean, walk, casual
-waving, a slow and a fast full swing, a left hook, a right hook, a straight
-release, a short swing, a mid-backswing occlusion (finger-landmark fallback),
-tracking loss mid-swing, three repeated swings and an arm switch. The same
-comparison runs inside `tools/js_tests.mjs` against the committed
-`tools/webcam_parity_py.json`.
+they map to. Sequences: recorded jumping-jacks/burpees footage and recorded
+waving (from `tools/webcam_landmarks.json` / `webcam_wave_landmarks.json`),
+plus synthetic still, lean, walk, casual waving, a slow and a fast full swing,
+a left hook, a right hook, a straight release, a short swing, a mid-backswing
+occlusion (finger-landmark fallback), tracking loss mid-swing, three repeated
+swings and an arm switch. The same comparison runs inside `tools/js_tests.mjs`
+against the committed `tools/webcam_parity_py.json`.
+
+> **Correction (2026-10-16).** The fixture historically described here as a
+> "recorded real swing" is exercise footage (Wikimedia *Jumping jacks and
+> burpees*), and the legacy detectors release on it in both languages. Parity
+> is therefore a statement about the two implementations agreeing, not about
+> recognizing bowling. The browser release authority is now the temporal
+> classifier (`src/input/classifier.js` / `input/classifier.py`), which is
+> evaluated against labeled traces (`tools/webcam_eval.mjs` /
+> `tools/webcam_eval.py`) and does not release on that footage. See
+> `docs/WEBCAM_SWING.md`.
 
 ## 7. Remaining issues
 
 * **Webcam release timing on a real human swing** is verified against recorded
-  footage rather than a live human in front of this machine's camera: the same
-  MediaPipe model the browser runs was executed over real-person videos and the
-  resulting landmark traces drive the ported detector both in Node
-  (`tools/js_tests.mjs`, fixtures exported by `tools/export_landmarks.py`) and
-  through the real browser service (`tools/webcam_fixture_check.js`). Inference
-  itself (worker engine, GPU delegate, live `getUserMedia` → `TrackingService` →
-  game, and the main-thread fallback) was run in the browser over a synthetic
-  camera feed; a human standing in front of a webcam on the deployment is the
-  remaining unverified step. A fast hand wave that starts from a held, arms-down
-  ready pose can satisfy the detector's documented "short swing" path - the
-  original Python detector shares the same behaviour and thresholds.
+  footage rather than a live human in front of this machine's camera. That
+  footage is two *negative* motions (exercise and waving); the positive
+  evidence is synthetic only, and a real deliberate bowling swing in front of
+  a live camera has **not** been verified in this repository. The manual
+  procedure is in `docs/WEBCAM_MANUAL_TEST.md`. The old "short swing" path
+  that a fast hand wave from the ready pose could satisfy has been removed:
+  the classifier requires a settled wind-up and a sustained expanding forward
+  stroke, and the legacy phase machine is no longer the release authority.
 * **The browser deployment is configured but not live-verified.** No Vercel
   credentials or linked project exist in this environment, and the GitHub remote
   is not reachable from it, so the repository-side configuration is complete and

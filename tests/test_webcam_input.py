@@ -21,7 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from input.base import ThrowSource
 from input.mouse_input import ThrowData
-from input.swing import PHASE_READY, SwingDetector, SwingEvent
+from input.classifier import STATE_READY, SwingClassifier
+from input.swing import SwingEvent
 from input.webcam_input import WebcamInput, event_to_throw
 from tests.test_swing import DT, pose_result
 from tracking.service import TrackingSnapshot
@@ -121,15 +122,15 @@ def quiet_log_path():
 
 
 class InputRig:
-    """WebcamInput + fake service + fake clock + real swing detector."""
+    """WebcamInput + fake service + fake clock + real swing classifier."""
 
     def __init__(self):
         self.service = FakeService()
         self.clock = FakeClock()
-        self.detector = SwingDetector()
+        self.classifier = SwingClassifier()
         # Keep test phase-lines out of the game's real webcam_swing.log.
         self.log_dir = tempfile.mkdtemp(prefix='strike_lab_rig_')
-        self.input = WebcamInput(service=self.service, detector=self.detector,
+        self.input = WebcamInput(service=self.service, classifier=self.classifier,
                                  clock=self.clock,
                                  log_path=os.path.join(self.log_dir, 'swing.log'))
 
@@ -144,7 +145,7 @@ class InputRig:
     def hold_ready(self, max_frames=40):
         for _ in range(max_frames):
             self.feed_y(0.62)
-            if self.detector.phase == PHASE_READY:
+            if self.classifier.phase == STATE_READY:
                 return True
         return False
 
@@ -196,7 +197,7 @@ class TestThrowGeneration(unittest.TestCase):
         clock = FakeClock()
         detector = StubDetector()
         detector.events = [make_event(up_speed=2.0), make_event(up_speed=0.5)]
-        webcam = WebcamInput(service=service, detector=detector,
+        webcam = WebcamInput(service=service, classifier=detector,
                              clock=clock, log_path=quiet_log_path())
         webcam.set_game_ready(True)
         clock.advance(DT)
@@ -215,7 +216,7 @@ class TestThrowGeneration(unittest.TestCase):
         service = FakeService()
         detector = StubDetector()
         detector.events = [make_event()]
-        webcam = WebcamInput(service=service, detector=detector,
+        webcam = WebcamInput(service=service, classifier=detector,
                              clock=FakeClock(), log_path=quiet_log_path())
         webcam.set_game_ready(True)
         service.feed(pose_result())
@@ -249,7 +250,7 @@ class TestThrowGeneration(unittest.TestCase):
     def test_each_camera_frame_is_processed_once(self):
         service = FakeService()
         detector = StubDetector()
-        webcam = WebcamInput(service=service, detector=detector,
+        webcam = WebcamInput(service=service, classifier=detector,
                              clock=FakeClock(), log_path=quiet_log_path())
         webcam.set_game_ready(True)
         service.feed(pose_result())
@@ -260,7 +261,7 @@ class TestThrowGeneration(unittest.TestCase):
     def test_tracking_loss_is_forwarded_to_the_detector(self):
         service = FakeService()
         detector = StubDetector()
-        webcam = WebcamInput(service=service, detector=detector,
+        webcam = WebcamInput(service=service, classifier=detector,
                              clock=FakeClock(), log_path=quiet_log_path())
         webcam.set_game_ready(True)
         service.feed(pose_result(tracked=False))
@@ -272,7 +273,7 @@ class TestThrowGeneration(unittest.TestCase):
             log_path = os.path.join(tmp, 'swing.log')
             service = FakeService()
             clock = FakeClock()
-            webcam = WebcamInput(service=service, detector=SwingDetector(),
+            webcam = WebcamInput(service=service, classifier=SwingClassifier(),
                                  clock=clock, log_path=log_path)
             webcam.set_game_ready(True)
             webcam.start()                     # opens the log session
@@ -284,14 +285,17 @@ class TestThrowGeneration(unittest.TestCase):
 
             for _ in range(12):
                 feed(0.62)
-            for y in (0.58, 0.52, 0.45, 0.38, 0.32, 0.28):
-                feed(y)
+            for i in range(1, 7):                     # visible backswing
+                feed(0.62 + 0.28 * i / 6)
+            for i in range(1, 9):                     # forward delivery
+                feed(0.90 - 0.60 * i / 8)
             self.assertIsNotNone(webcam.throw_data)
 
             with open(log_path, encoding='utf-8') as handle:
                 text = handle.read()
         self.assertIn('session start', text)
         self.assertIn('phase -> ready', text)
+        self.assertIn('phase -> backswing', text)
         self.assertIn('RELEASE', text)
         self.assertIn('speed=', text)
 
@@ -300,7 +304,7 @@ class TestThrowGeneration(unittest.TestCase):
             log_path = os.path.join(tmp, 'swing.log')
             service = FakeService()
             clock = FakeClock()
-            webcam = WebcamInput(service=service, detector=SwingDetector(),
+            webcam = WebcamInput(service=service, classifier=SwingClassifier(),
                                  clock=clock, log_path=log_path)
             webcam.set_game_ready(True)
             webcam.start()
@@ -323,7 +327,7 @@ class TestThrowGeneration(unittest.TestCase):
             log_path = os.path.join(tmp, 'swing.log')
             service = FakeService()
             clock = FakeClock()
-            webcam = WebcamInput(service=service, detector=SwingDetector(),
+            webcam = WebcamInput(service=service, classifier=SwingClassifier(),
                                  clock=clock, log_path=log_path)
             webcam.set_game_ready(True)
             with mock.patch.object(config, 'SWING_LOG_VERBOSE', True), \
@@ -388,7 +392,7 @@ class TestThrowingArm(unittest.TestCase):
     def test_set_preferred_arm_updates_the_detector(self):
         rig = InputRig()
         rig.input.set_preferred_arm('left')
-        self.assertEqual(rig.detector.preferred_arm, 'left')
+        self.assertEqual(rig.classifier.preferred_arm, 'left')
         with self.assertRaises(ValueError):
             rig.input.set_preferred_arm('foot')
 
@@ -404,7 +408,7 @@ class TestStatusReporting(unittest.TestCase):
         self.assertAlmostEqual(status.confidence, 0.81)
         self.assertAlmostEqual(status.fps, 24.5)
         self.assertIsNone(status.error)
-        self.assertEqual(status.phase, rig.detector.phase)
+        self.assertEqual(status.phase, rig.classifier.phase)
         self.assertTrue(status.phase_label)
         self.assertTrue(status.hint)
         self.assertTrue(status.telemetry)          # live detector readout

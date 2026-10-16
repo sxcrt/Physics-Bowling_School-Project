@@ -301,6 +301,71 @@ SWING_LOG_VERBOSE = False              # per-frame telemetry in the swing log (t
 SWING_LOG_EVERY_FRAMES = 15            # processed frames between verbose telemetry lines
 WEBCAM_SHOW_TELEMETRY = True           # small live detector readout in webcam mode
 
+# ---------------------------------------------------------------------------
+# Temporal swing classifier (input/classifier.py; mirrored in src/config.js)
+# ---------------------------------------------------------------------------
+# The legacy phase machine above is a sensitive *motion* sensor: it recognizes
+# movement, not intent, and the recorded jumping-jacks trace releases through
+# it in both builds. input/classifier.py is the shipping decision layer and
+# recognizes the whole movement sequence:
+#   tracking -> ready -> backswing -> forward -> release -> follow-through ->
+#   re-arm
+# Distances are torso heights and speeds are torso heights per second, so
+# camera distance and player size cancel; elapsed time comes from the measured
+# camera frame interval. Values were tuned against labeled synthetic positives
+# and negatives plus the recorded real-human jumping-jacks and waving traces;
+# see docs/WEBCAM_SWING.md and tools/webcam_eval.py.
+CLASSIFIER_PREFERRED_ARM = 'auto'      # 'auto' | 'left' | 'right'
+CLASSIFIER_NOTICE_TIME = 2.5           # s a rejection/notice stays in the HUD
+CLASSIFIER_MAX_FRAME_GAP = 0.35        # s; longer camera gaps are untrusted
+CLASSIFIER_HISTORY_TIME = 1.2          # s of per-frame history kept for diagnostics
+CLASSIFIER_POSITION_SMOOTHING = 0.55   # EMA weight of the newest hand sample
+CLASSIFIER_VELOCITY_SMOOTHING = 0.45   # EMA weight of the newest velocity sample
+CLASSIFIER_MIN_CONFIDENCE = 0.5        # pose confidence floor
+CLASSIFIER_TORSO_VISIBILITY = 0.3      # min visibility for torso/elbow joints
+CLASSIFIER_WRIST_VISIBILITY = 0.3      # min visibility for the wrist/hand sample
+CLASSIFIER_MIN_TORSO_HEIGHT = 0.06     # sanity floor for shoulder->hip distance
+CLASSIFIER_MAX_TORSO_JUMP = 0.18       # image units; larger one-frame body jumps are untrusted
+CLASSIFIER_MAX_HAND_JUMP = 1.30        # torso units; larger one-frame hand jumps are glitches
+CLASSIFIER_MAX_HAND_SPEED = 30.0       # torso units/s; faster samples are glitches
+CLASSIFIER_MAX_INVALID_RUN = 5         # untrusted frames before a stroke aborts
+CLASSIFIER_STROKE_MAX_INVALID_RUN = 2  # untrusted frames mid-stroke before it aborts
+CLASSIFIER_TRACK_MIN_FRAMES = 4        # valid frames needed before the ready pose counts
+CLASSIFIER_READY_HOLD = 0.30           # s the ready pose must be held to arm
+CLASSIFIER_READY_GRACE = 0.60          # s the ready pose may wobble before disarming
+CLASSIFIER_READY_HAND_BELOW = -0.25    # ready: hands at least this far below the shoulders
+CLASSIFIER_READY_MAX_HAND_SPEED = 0.60  # torso units/s; above this the pose is not "still"
+CLASSIFIER_READY_MAX_BODY_SPEED = 0.35  # torso units/s; body stillness for the ready pose
+CLASSIFIER_BACK_START_SPEED = 0.40     # torso units/s downward that starts a backswing
+CLASSIFIER_BACK_BAND_MARGIN = 0.20     # torso units the hand may sit above the ready band
+CLASSIFIER_SYMMETRY_START_RATIO = 0.80  # two-arm descent this similar never starts a stroke
+CLASSIFIER_SYMMETRY_FRAMES = 3         # symmetric frames before the player is told
+CLASSIFIER_ELBOW_SPEED_SCALE = 0.65    # elbow speed as a fraction of hand speed (occlusion)
+CLASSIFIER_BACK_MIN_DEPTH = 0.10       # torso heights the hand must travel down/back
+CLASSIFIER_BACK_SETTLE_TIME = 0.35     # s the hand must have been low before a wind-up counts
+CLASSIFIER_ELBOW_BAND_MARGIN = 0.55    # torso units; elbow "low" band for occluded starts
+CLASSIFIER_BACK_MIN_TIME = 0.06        # s the backswing must last
+CLASSIFIER_BACK_REVERSAL_SPEED = 0.35  # torso units/s upward that ends the backswing
+CLASSIFIER_BACK_TIMEOUT = 1.50         # s without a forward swing -> abort
+CLASSIFIER_FORWARD_UP_SPEED = 0.35     # torso units/s that counts as a rising frame
+CLASSIFIER_FORWARD_MIN_TIME = 0.08     # s before a release can be registered
+CLASSIFIER_FORWARD_MIN_RISING_RUN = 3  # consecutive rising frames a delivery needs
+CLASSIFIER_FORWARD_MIN_RISE = 0.50     # torso heights the hand must rise above its low point
+CLASSIFIER_FORWARD_MIN_PEAK = 1.00     # torso units/s; peak upward hand speed
+CLASSIFIER_RELEASE_HAND_HEIGHT = -0.10  # torso heights; the "crossed" release height
+CLASSIFIER_RELEASE_UP_SPEED = 0.40     # torso units/s; speed required when crossing
+CLASSIFIER_DOMINANCE_RATIO = 0.60      # other-arm motion allowed relative to the throwing arm
+CLASSIFIER_DOMINANCE_MAX_RATIO = 1.20  # absolute reject when the other arm dominates
+CLASSIFIER_OTHER_ARM_ABS = 0.60        # torso units/s; below this the other arm is "quiet"
+CLASSIFIER_MAX_BODY_LIFT = 0.60        # torso heights the shoulder may travel mid-stroke
+CLASSIFIER_MAX_TORSO_CHANGE = 0.50     # relative torso-size change allowed mid-stroke
+CLASSIFIER_MAX_TORSO_TURN = 45.0       # degrees the shoulder line may rotate mid-stroke
+CLASSIFIER_MAX_REVERSALS = 3           # direction changes allowed in the forward stroke
+CLASSIFIER_HAND_LOSS_GRACE = 0.25      # s the throwing hand may vanish before aborting
+CLASSIFIER_FORWARD_TIMEOUT = 1.10      # s without a release -> abort
+CLASSIFIER_RELEASE_FLASH = 0.12        # s the release state is shown before follow-through
+CLASSIFIER_FOLLOW_TIME = 0.45          # s of follow-through before re-arming
+
 MESSAGE_DURATION = 4.0                 # s transient in-game messages stay visible
 
 # Player names in the local modes are typed on one line, so they are capped.

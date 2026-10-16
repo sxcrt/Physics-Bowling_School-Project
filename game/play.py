@@ -854,9 +854,9 @@ class Game:
                 self._handoff_stable += dt
             else:
                 self._handoff_stable = 0.0
-            # The detector only reports 'ready' after a still ready pose is
-            # held, so requiring that phase is the gesture confirmation.
-            ready_pose = detection and status.phase in ('waiting', 'ready')
+            # During the handoff the input is not game-ready, so the classifier
+            # is idle in 'tracking'; 'ready' covers the moment it has armed.
+            ready_pose = detection and status.phase in ('tracking', 'ready')
             tracking_ready = (self._handoff_stable >= HANDOFF_STABLE_TIME
                               and ready_pose)
             if tracking_ready:

@@ -13,6 +13,16 @@ writes a per-frame trace plus the recognised swings and the throws they map to.
 so a divergence in the ported detector, the velocity/state arithmetic or the
 event -> ThrowData mapping fails without a camera.
 
+NOTE: ``input.swing.SwingDetector`` is the legacy *motion* sensor and the
+Python parity reference; it is deliberately sensitive and releases on the
+recorded exercise footage (see the ``recorded_jumping_jacks_burpees``
+sequence). It is no longer the shipping release authority in the browser -
+``src/input/classifier.js`` (ported to ``input/classifier.py``) recognizes the
+full movement sequence and is evaluated independently against labeled
+positives and negatives by ``tools/webcam_eval.mjs`` / ``tools/webcam_eval.py``.
+Parity here proves the two legacy implementations agree; it does not prove
+behavioural correctness.
+
 Sequences cover the cases the acceptance criteria name: valid swings at
 different speeds, left/right hooks and straight releases, a short swing, plus
 the negative cases (standing still, leaning, walking, waving, occlusion,
@@ -323,7 +333,7 @@ def main():
     for name, frames in build_sequences().items():
         sequences[name] = {'fps': FPS, 'kind': 'synthetic', 'frames': frames}
 
-    for fixture_name, sequence_name in (('webcam_landmarks.json', 'recorded_swing'),
+    for fixture_name, sequence_name in (('webcam_landmarks.json', 'recorded_jumping_jacks_burpees'),
                                         ('webcam_wave_landmarks.json', 'recorded_wave')):
         fixture = load_fixture(fixture_name, tools_dir)
         if fixture is None:

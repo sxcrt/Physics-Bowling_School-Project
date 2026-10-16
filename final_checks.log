@@ -1,0 +1,50 @@
+== node tools/js_tests.mjs ==
+117 passed, 0 failed
+
+== node tools/webcam_eval.mjs (final) ==
+webcam classifier evaluation: 59 sequences (57 synthetic, 2 recorded-human negative)
+  bowling_swing    sequences 28/28 pass   expected releases 30  got 30
+  stillness        sequences  1/1 pass   expected releases 0  got 0
+  idle_sway        sequences  1/1 pass   expected releases 0  got 0
+  jumping_jacks    sequences  2/2 pass   expected releases 0  got 0
+  burpees          sequences  1/1 pass   expected releases 0  got 0
+  waving           sequences  2/2 pass   expected releases 0  got 0
+  head_scratch     sequences  1/1 pass   expected releases 0  got 0
+  arm_raise        sequences  2/2 pass   expected releases 0  got 0
+  stretch          sequences  1/1 pass   expected releases 0  got 0
+  walking          sequences  1/1 pass   expected releases 0  got 0
+  stepping         sequences  1/1 pass   expected releases 0  got 0
+  leaning          sequences  1/1 pass   expected releases 0  got 0
+  torso_twist      sequences  1/1 pass   expected releases 0  got 0
+  random_arm       sequences  1/1 pass   expected releases 0  got 0
+  rapid_flick      sequences  1/1 pass   expected releases 0  got 0
+  combination      sequences  9/9 pass   expected releases 0  got 0
+  interrupted      sequences  2/2 pass   expected releases 0  got 0
+  low_confidence   sequences  1/1 pass   expected releases 0  got 0
+  identity_flip    sequences  1/1 pass   expected releases 0  got 0
+  timestamp_anomaly sequences  1/1 pass   expected releases 0  got 0
+positives detected: 28   false negatives: 0
+false positives: 0   true negatives: 31
+precision 100.0%  recall 100.0%  f1 100.0%
+
+== python tools/webcam_eval.py (final) ==
+webcam classifier evaluation (Python): 59 sequences
+positives detected: 28   false negatives: 0
+false positives: 0   true negatives: 31
+precision 100.0%  recall 100.0%  f1 100.0%
+
+== pytest (swing/webcam/classifier/tracking) ==
+148 passed in 1.33s
+
+== webcam parity ==
+tools\webcam_parity_py.json: 16 sequences
+tools/webcam_parity_js.json: 16 sequences
+mismatches: 0
+
+== physics / logic fidelity ==
+cases compared: 12
+mismatches: 0
+scoring cases: 8
+challenges: 10
+question samples: 10
+problems: 0

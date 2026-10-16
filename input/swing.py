@@ -1,5 +1,14 @@
 """Bowling swing recognition from tracked body landmarks (pure Python).
 
+LEGACY / LOW-LEVEL MOTION SENSOR. This module is a deliberately sensitive
+phase machine and the Python-side parity reference for
+``src/input/swing.js``. It recognizes *motion*, not intent: the recorded
+jumping-jacks trace releases through it. The shipping decision layer in both
+builds is ``input/classifier.py`` (ported from ``src/input/classifier.js``),
+which requires the whole tracking -> ready -> backswing -> forward -> release
+sequence. This detector remains exported, unit-tested and parity-checked as
+the motion sensor it is (see docs/WEBCAM_SWING.md).
+
 The detector turns a stream of ``tracking.pose.PoseResult`` frames into phase
 transitions and, once per swing, a ``SwingEvent``. It is deliberately
 heuristic and forgiving: a webcam estimates body motion, so the event carries

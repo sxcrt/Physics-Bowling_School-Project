@@ -45,13 +45,15 @@ export function webcamFeedbackLines(status) {
   }
   const arm = String(status.arm || 'auto').toUpperCase();
   lines.push([`Throwing arm: ${arm}  (C to change)`, [140, 145, 160]]);
-  // The detected release requires a visible backswing (or an exceptionally
-  // fast direct stroke); say so while the player is armed instead of letting
-  // a forward-only flick get refused. Notices (blocked releases, aborts)
-  // still take priority because they replace the detector's default hint.
-  const DEFAULT_READY_HINT = 'Swing your arm forward and up to throw.';
+  // The classifier reports its state and the reason the ready pose is not
+  // established yet; notices (a rejected swing with its cause) take priority
+  // through status.hint for a few seconds.
   let hint = status.hint;
-  if (status.phase === 'ready' && (!hint || hint === DEFAULT_READY_HINT)) {
+  if (status.tracked && status.phase === 'tracking' && status.tracking_reason
+      && (!hint || hint === status.tracking_reason)) {
+    hint = status.tracking_reason;
+  }
+  if (status.tracked && status.phase === 'ready' && (!hint || hint === 'Ready: swing your arm back, then forward and up.')) {
     hint = 'Ready: swing your arm back, then forward and up.';
   }
   if (hint) lines.push([hint, GRAY]);
@@ -783,7 +785,7 @@ export class Hud {
       if (!status || !status.running) text = 'Waiting for the camera...';
       else if (status.error) text = 'Camera unavailable - press TAB for mouse controls';
       else if (!status.tracked) text = 'Step into the camera view';
-      else if (status.phase === 'waiting') text = 'Hold still with your arms down';
+      else if (status.phase === 'tracking') text = 'Hold still with your arms down';
       else if (status.phase === 'ready') text = 'Ready to throw';
       else text = status.phase_label || 'Ready to throw';
     }

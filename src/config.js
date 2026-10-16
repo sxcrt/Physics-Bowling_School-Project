@@ -188,12 +188,11 @@ export const SWING_LOG_EVERY_FRAMES = 15;
 export const WEBCAM_SHOW_TELEMETRY = false;        // player HUD shows status + phase, not detector telemetry
 
 // --- Deliberate-swing validation (browser) ---
-// The phase machine in src/input/swing.js is a byte-parity port of
-// input/swing.py, and stays that way. These constants configure the
-// acceptance gate in front of it (src/input/validate.js): a recognized swing
-// only becomes a throw when it is a single-arm, sustained, well-tracked
-// bowling-like stroke. Ordinary movement - two-arm raises, waving, leaning,
-// stepping, tracking flicker - fails at least one gate.
+// DEPRECATED by the temporal classifier (src/input/classifier.js). The old
+// phase machine in src/input/swing.js is now only the low-level motion sensor
+// and the Python parity reference; the classifier owns the release decision.
+// These constants remain so the legacy parity tooling and its tests can still
+// be run, but the shipping input no longer uses them.
 export const SWING_VALIDATE_ENABLED = true;
 export const SWING_VALIDATE_WINDOW = 0.9;          // s of motion history examined per release
 export const SWING_VALIDATE_CRITICAL_TIME = 0.35;  // s before the release that must be fully valid
@@ -213,6 +212,67 @@ export const SWING_VALIDATE_OTHER_UP_ABS = 0.45;   // 1/s; absolute cap on the o
 export const SWING_VALIDATE_OTHER_RISE_ABS = 0.35; // torso heights; absolute cap on the other arm's rise
 export const SWING_VALIDATE_MAX_STALE_FRAMES = 3;  // repeated camera frames before the swing state is reset
 export const SWING_VALIDATE_LOG_BLOCKED = true;    // console.debug one line per blocked release (dev aid)
+
+// --- Temporal swing classifier (browser decision layer, ported to
+// input/classifier.py) ---
+// src/input/classifier.js recognizes the *sequence* of a bowling action:
+// tracking -> ready -> backswing -> forward -> release -> follow-through ->
+// re-arm. All distances are torso heights and all speeds torso heights per
+// second, so camera distance and player size cancel; elapsed time comes from
+// the measured camera frame interval. The values below were tuned against the
+// labeled evaluation set in tools/webcam_eval.mjs (synthetic positives and
+// negatives plus the recorded real-human jumping-jacks and waving traces);
+// see docs/WEBCAM_SWING.md for the measured trade-off.
+export const CLASSIFIER_PREFERRED_ARM = 'auto';      // 'auto' | 'left' | 'right'
+export const CLASSIFIER_NOTICE_TIME = 2.5;           // s a rejection/notice stays in the HUD
+export const CLASSIFIER_MAX_FRAME_GAP = 0.35;        // s; longer camera gaps are untrusted
+export const CLASSIFIER_HISTORY_TIME = 1.2;          // s of per-frame history kept for diagnostics
+export const CLASSIFIER_POSITION_SMOOTHING = 0.55;   // EMA weight of the newest hand sample
+export const CLASSIFIER_VELOCITY_SMOOTHING = 0.45;   // EMA weight of the newest velocity sample
+export const CLASSIFIER_MIN_CONFIDENCE = 0.5;        // pose confidence floor
+export const CLASSIFIER_TORSO_VISIBILITY = 0.3;      // min visibility for torso/elbow joints
+export const CLASSIFIER_WRIST_VISIBILITY = 0.3;      // min visibility for the wrist/hand sample
+export const CLASSIFIER_MIN_TORSO_HEIGHT = 0.06;     // sanity floor for shoulder->hip distance
+export const CLASSIFIER_MAX_TORSO_JUMP = 0.18;       // image units; larger one-frame body jumps are untrusted
+export const CLASSIFIER_MAX_HAND_JUMP = 1.30;        // torso units; larger one-frame hand jumps are glitches
+export const CLASSIFIER_MAX_HAND_SPEED = 30.0;       // torso units/s; faster samples are glitches
+export const CLASSIFIER_MAX_INVALID_RUN = 5;         // untrusted frames before a stroke aborts
+export const CLASSIFIER_STROKE_MAX_INVALID_RUN = 2;  // untrusted frames mid-stroke before it aborts
+export const CLASSIFIER_TRACK_MIN_FRAMES = 4;        // valid frames needed before the ready pose counts
+export const CLASSIFIER_READY_HOLD = 0.30;           // s the ready pose must be held to arm
+export const CLASSIFIER_READY_GRACE = 0.60;          // s the ready pose may wobble before disarming
+export const CLASSIFIER_READY_HAND_BELOW = -0.25;    // ready: hands at least this far below the shoulders
+export const CLASSIFIER_READY_MAX_HAND_SPEED = 0.60; // torso units/s; above this the pose is not "still"
+export const CLASSIFIER_READY_MAX_BODY_SPEED = 0.35; // torso units/s; body stillness for the ready pose
+export const CLASSIFIER_BACK_START_SPEED = 0.40;     // torso units/s downward that starts a backswing
+export const CLASSIFIER_BACK_BAND_MARGIN = 0.20;     // torso units the hand may sit above the ready band
+export const CLASSIFIER_SYMMETRY_START_RATIO = 0.80; // two-arm descent this similar never starts a stroke
+export const CLASSIFIER_SYMMETRY_FRAMES = 3;         // symmetric frames before the player is told
+export const CLASSIFIER_ELBOW_SPEED_SCALE = 0.65;    // elbow speed as a fraction of hand speed (occlusion)
+export const CLASSIFIER_BACK_MIN_DEPTH = 0.10;       // torso heights the hand must travel down/back
+export const CLASSIFIER_BACK_SETTLE_TIME = 0.35;     // s the hand must have been low before a wind-up counts
+export const CLASSIFIER_ELBOW_BAND_MARGIN = 0.55;    // torso units; elbow "low" band for occluded starts
+export const CLASSIFIER_BACK_MIN_TIME = 0.06;        // s the backswing must last
+export const CLASSIFIER_BACK_REVERSAL_SPEED = 0.35;  // torso units/s upward that ends the backswing
+export const CLASSIFIER_BACK_TIMEOUT = 1.50;         // s without a forward swing -> abort
+export const CLASSIFIER_FORWARD_UP_SPEED = 0.35;     // torso units/s that counts as a rising frame
+export const CLASSIFIER_FORWARD_MIN_TIME = 0.08;     // s before a release can be registered
+export const CLASSIFIER_FORWARD_MIN_RISING_RUN = 3;  // consecutive rising frames a delivery needs
+export const CLASSIFIER_FORWARD_MIN_RISE = 0.50;     // torso heights the hand must rise above its low point
+export const CLASSIFIER_FORWARD_MIN_PEAK = 1.00;     // torso units/s; peak upward hand speed
+export const CLASSIFIER_RELEASE_HAND_HEIGHT = -0.10; // torso heights; the "crossed" release height
+export const CLASSIFIER_RELEASE_UP_SPEED = 0.40;     // torso units/s; speed required when crossing
+export const CLASSIFIER_DOMINANCE_RATIO = 0.60;      // other-arm motion allowed relative to the throwing arm
+export const CLASSIFIER_DOMINANCE_MAX_RATIO = 1.20;  // absolute reject when the other arm dominates
+export const CLASSIFIER_OTHER_ARM_ABS = 0.60;        // torso units/s; below this the other arm is "quiet"
+export const CLASSIFIER_MAX_BODY_LIFT = 0.60;        // torso heights the shoulder may travel mid-stroke
+export const CLASSIFIER_MAX_TORSO_CHANGE = 0.50;     // relative torso-size change allowed mid-stroke
+export const CLASSIFIER_MAX_TORSO_TURN = 45.0;       // degrees the shoulder line may rotate mid-stroke
+export const CLASSIFIER_MAX_REVERSALS = 3;           // direction changes allowed in the forward stroke
+export const CLASSIFIER_HAND_LOSS_GRACE = 0.25;      // s the throwing hand may vanish before aborting
+export const CLASSIFIER_FORWARD_TIMEOUT = 1.10;      // s without a release -> abort
+export const CLASSIFIER_RELEASE_FLASH = 0.12;        // s the release state is shown before follow-through
+export const CLASSIFIER_FOLLOW_TIME = 0.45;          // s of follow-through before re-arming
 
 export const MESSAGE_DURATION = 4.0;               // s
 export const MAX_NAME_LENGTH = 12;

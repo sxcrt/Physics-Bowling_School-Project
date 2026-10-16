@@ -1,7 +1,7 @@
 // Replay the Python webcam parity dump through the browser swing pipeline.
 //
 //   python tools/webcam_parity_dump.py tools/webcam_parity_py.json
-//   node   tools/webcam_parity_run.mjs  tools/webcam_parity_js.json
+//   node   tools/webcam_parity_run.mjs  tools/webcam_parity_py.json tools/webcam_parity_js.json
 //   node   tools/webcam_parity_compare.mjs tools/webcam_parity_py.json tools/webcam_parity_js.json
 //
 // The exact same landmark sequences (parsed from the Python dump, so both

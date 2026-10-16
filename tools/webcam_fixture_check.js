@@ -5,9 +5,8 @@
 //   (0, eval)(await (await fetch('/tools/webcam_fixture_check.js')).text())
 //   await window.hellsWebcamFixtureRun()
 //
-// It uses the production TrackingService, WebcamInput, swing detector,
-// deliberate-swing validator, game loop and physics. Only two process
-// boundaries are substituted:
+// It uses the production TrackingService, WebcamInput, temporal classifier,
+// game loop and physics. Only two process boundaries are substituted:
 //   * getUserMedia returns a canvas captureStream (this environment has no
 //     camera the browser can open), and
 //   * the pose landmarker replays a deterministic landmark trace.
@@ -16,8 +15,8 @@
 //   * a scripted one-arm bowling swing (ready hold, backswing, forward
 //     delivery) - must launch exactly one ball;
 //   * recorded jumping jacks/burpees footage (tools/webcam_landmarks.json) -
-//     the raw phase machine fires on it, but the deliberate-swing gate must
-//     refuse it: zero launches;
+//     the legacy phase machine fires on it, but the classifier must refuse it
+//     and must not even recognize a release: zero launches;
 //   * recorded waving footage (tools/webcam_wave_landmarks.json) - zero
 //     launches.
 //
@@ -134,11 +133,14 @@
       // it must run the main-thread engine (the worker owns its own engine).
       service._useWorker = false;
       service._loadLandmarker = async () => sequenceLandmarker(frames, state);
-      const detector = webcam._detector;
-      const validator = webcam._validator;
+      const detector = webcam._classifier;
       const phases = [];
       let thrown = null;
       let launches = 0;
+      // Classifier counters are session diagnostics and deliberately survive a
+      // stop()/reset; each trace must therefore be judged by its own delta.
+      const releasesBefore = detector.release_count;
+      const blockedBefore = detector.blocked_count;
       const originalLaunch = game.launch.bind(game);
       game.launch = (data) => { launches += 1; if (thrown === null) thrown = JSON.parse(JSON.stringify(data)); return originalLaunch(data); };
       game.configure('classic', [{ name: 'FIXTURE' }]);
@@ -155,8 +157,8 @@
       }
       if (expectThrow) await sleep(300);   // catch any duplicate launch
       game.launch = originalLaunch;
-      const blocked = validator.blocked_count;
-      const detectorReleases = detector.release_count;
+      const blocked = detector.blocked_count - blockedBefore;
+      const detectorReleases = detector.release_count - releasesBefore;
       await webcam.stop();
       return { thrown, phases, launches, frames: state.frame, blocked, detectorReleases };
     };
@@ -176,7 +178,7 @@
       }
       check('exactly one launch from one swing', swing.launches === 1, `launches=${swing.launches}`);
       const phaseNames = swing.phases.map((p) => p.phase);
-      check('phase machine armed and swung',
+      check('classifier armed and swung',
         phaseNames.includes('ready') && (phaseNames.includes('forward') || phaseNames.includes('backswing')),
         phaseNames.join('>'));
 
@@ -184,9 +186,9 @@
       const exercise = await throwOf(fixtureFrames(jj), 20000, true);
       check('recorded exercise motion (jumping jacks) never launches', exercise.thrown === null,
         `detectorReleases=${exercise.detectorReleases} blocked=${exercise.blocked}`);
-      check('the exercise release was recognized but gated',
-        exercise.detectorReleases >= 1 && exercise.blocked >= 1,
-        `detectorReleases=${exercise.detectorReleases} blocked=${exercise.blocked}`);
+      check('the exercise motion never even recognizes a release in the classifier',
+        exercise.detectorReleases === 0,
+        `classifierReleases=${exercise.detectorReleases}`);
 
       const wave = await loadFixture('webcam_wave_landmarks.json');
       const waving = await throwOf(fixtureFrames(wave), 10000, true);

@@ -1,0 +1,2809 @@
+{
+  "classifier": "input/classifier.py",
+  "source": "tools\\webcam_eval_sequences.json",
+  "totals": {
+    "tp": 28,
+    "fp": 0,
+    "tn": 31,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "results": [
+    {
+      "name": "swing_standard",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_slow_delivery",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 37,
+          "arm": "right",
+          "up_speed": 3.925761418228922,
+          "rise": 1.170480787641181,
+          "depth": 0.3063739331522465,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 21
+        },
+        {
+          "phase": "forward",
+          "frame": 29
+        },
+        {
+          "phase": "release",
+          "frame": 37
+        },
+        {
+          "phase": "follow_through",
+          "frame": 41
+        }
+      ],
+      "max_depth": 0.306,
+      "max_rise": 1.699,
+      "max_peak": 3.926,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_fast_delivery",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 30,
+          "arm": "right",
+          "up_speed": 10.44326031957229,
+          "rise": 1.6181708215990276,
+          "depth": 0.5566334606250001,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 26
+        },
+        {
+          "phase": "release",
+          "frame": 30
+        },
+        {
+          "phase": "follow_through",
+          "frame": 34
+        }
+      ],
+      "max_depth": 0.557,
+      "max_rise": 2.125,
+      "max_peak": 10.443,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_deep_backswing",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 33,
+          "arm": "right",
+          "up_speed": 8.999070397676633,
+          "rise": 2.0700666836223607,
+          "depth": 0.9431844749479168,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 33
+        },
+        {
+          "phase": "follow_through",
+          "frame": 37
+        }
+      ],
+      "max_depth": 0.943,
+      "max_rise": 2.448,
+      "max_peak": 8.999,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_shallow_backswing",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 4.9361342302139075,
+          "rise": 1.042269581152029,
+          "depth": 0.10883151153645887,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 21
+        },
+        {
+          "phase": "forward",
+          "frame": 26
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.109,
+      "max_rise": 1.4,
+      "max_peak": 4.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_visible_windup_pause",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 34,
+          "arm": "right",
+          "up_speed": 7.013815597468173,
+          "rise": 1.4949436023983729,
+          "depth": 0.5461883763631511,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 28
+        },
+        {
+          "phase": "release",
+          "frame": 34
+        },
+        {
+          "phase": "follow_through",
+          "frame": 38
+        }
+      ],
+      "max_depth": 0.546,
+      "max_rise": 2.021,
+      "max_peak": 7.014,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_bent_arm",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_left_arm",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "left",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_close_camera",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186527,
+          "depth": 0.47932325776041684,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_far_camera",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271388,
+          "rise": 1.428328338318652,
+          "depth": 0.4793232577604165,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_body_sway",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        },
+        {
+          "phase": "rearm",
+          "frame": 50
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_noisy_tracking",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.856810736671115,
+          "rise": 1.3997988464953364,
+          "depth": 0.4360585630326558,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 14
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        },
+        {
+          "phase": "rearm",
+          "frame": 50
+        }
+      ],
+      "max_depth": 0.436,
+      "max_rise": 1.94,
+      "max_peak": 6.857,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_low_fps",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 28,
+          "arm": "right",
+          "up_speed": 4.629918347977523,
+          "rise": 1.4194955246007064,
+          "depth": 0.41313215625,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 4
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 25
+        },
+        {
+          "phase": "release",
+          "frame": 28
+        },
+        {
+          "phase": "follow_through",
+          "frame": 30
+        },
+        {
+          "phase": "rearm",
+          "frame": 37
+        }
+      ],
+      "max_depth": 0.413,
+      "max_rise": 1.836,
+      "max_peak": 4.63,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_hidden_wrist",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_occluded_backswing",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 36,
+          "arm": "right",
+          "up_speed": 6.490905093750001,
+          "rise": 1.0259127847222222,
+          "depth": 0.5014902777777777,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 25
+        },
+        {
+          "phase": "forward",
+          "frame": 32
+        },
+        {
+          "phase": "release",
+          "frame": 36
+        },
+        {
+          "phase": "follow_through",
+          "frame": 40
+        }
+      ],
+      "max_depth": 0.501,
+      "max_rise": 1.549,
+      "max_peak": 6.491,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_briefly_hidden_wrist",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 34,
+          "arm": "right",
+          "up_speed": 5.909026198817406,
+          "rise": 1.92435784109375,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 31
+        },
+        {
+          "phase": "release",
+          "frame": 34
+        },
+        {
+          "phase": "follow_through",
+          "frame": 38
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.957,
+      "max_peak": 5.909,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_patient_ready",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 102,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 90
+        },
+        {
+          "phase": "forward",
+          "frame": 97
+        },
+        {
+          "phase": "release",
+          "frame": 102
+        },
+        {
+          "phase": "follow_through",
+          "frame": 106
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_two_hooks",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_cross_body",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 33,
+          "arm": "right",
+          "up_speed": 6.454623712651241,
+          "rise": 1.5125629003492962,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 33
+        },
+        {
+          "phase": "follow_through",
+          "frame": 37
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.771,
+      "max_peak": 6.455,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_one_frame_gap",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 7.229465813417767,
+          "rise": 1.4251139838466198,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 28
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 7.229,
+      "last_reject_reason": "no pose detected",
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 1
+      }
+    },
+    {
+      "name": "swing_moderate_other_arm",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_camera_shake",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186527,
+          "depth": 0.47932325776041684,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_borderline_confidence",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        },
+        {
+          "phase": "rearm",
+          "frame": 50
+        },
+        {
+          "phase": "ready",
+          "frame": 59
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_low_visibility_wrist",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 32,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 32
+        },
+        {
+          "phase": "follow_through",
+          "frame": 36
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_after_exercise",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 84,
+          "arm": "right",
+          "up_speed": 6.93554418227101,
+          "rise": 1.4283283383186525,
+          "depth": 0.47932325776041784,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 45
+        },
+        {
+          "phase": "backswing",
+          "frame": 72
+        },
+        {
+          "phase": "forward",
+          "frame": 79
+        },
+        {
+          "phase": "release",
+          "frame": 84
+        },
+        {
+          "phase": "follow_through",
+          "frame": 88
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_after_walking",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 127,
+          "arm": "right",
+          "up_speed": 6.935544182271392,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 115
+        },
+        {
+          "phase": "forward",
+          "frame": 122
+        },
+        {
+          "phase": "release",
+          "frame": 127
+        },
+        {
+          "phase": "follow_through",
+          "frame": 131
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "repeated_swings_rearm",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 3,
+      "got": 3,
+      "pass": true,
+      "events": [
+        {
+          "frame": 42,
+          "arm": "right",
+          "up_speed": 6.935544182271393,
+          "rise": 1.4283283383186525,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        },
+        {
+          "frame": 99,
+          "arm": "right",
+          "up_speed": 6.93554418218975,
+          "rise": 1.4283283383186176,
+          "depth": 0.479323257762295,
+          "hand_source": "wrist"
+        },
+        {
+          "frame": 156,
+          "arm": "right",
+          "up_speed": 6.93554418218975,
+          "rise": 1.4283283383186176,
+          "depth": 0.479323257762295,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 30
+        },
+        {
+          "phase": "forward",
+          "frame": 37
+        },
+        {
+          "phase": "release",
+          "frame": 42
+        },
+        {
+          "phase": "follow_through",
+          "frame": 46
+        },
+        {
+          "phase": "rearm",
+          "frame": 60
+        },
+        {
+          "phase": "ready",
+          "frame": 69
+        },
+        {
+          "phase": "backswing",
+          "frame": 87
+        },
+        {
+          "phase": "forward",
+          "frame": 94
+        },
+        {
+          "phase": "release",
+          "frame": 99
+        },
+        {
+          "phase": "follow_through",
+          "frame": 103
+        },
+        {
+          "phase": "rearm",
+          "frame": 117
+        },
+        {
+          "phase": "ready",
+          "frame": 126
+        },
+        {
+          "phase": "backswing",
+          "frame": 144
+        },
+        {
+          "phase": "forward",
+          "frame": 151
+        },
+        {
+          "phase": "release",
+          "frame": 156
+        },
+        {
+          "phase": "follow_through",
+          "frame": 160
+        },
+        {
+          "phase": "rearm",
+          "frame": 174
+        },
+        {
+          "phase": "ready",
+          "frame": 183
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.954,
+      "max_peak": 6.936,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 3,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "stand_still",
+      "kind": "synthetic",
+      "motion": "stillness",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "idle_sway",
+      "kind": "synthetic",
+      "motion": "idle_sway",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "jumping_jacks",
+      "kind": "synthetic",
+      "motion": "jumping_jacks",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "burpees",
+      "kind": "synthetic",
+      "motion": "burpees",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "waving",
+      "kind": "synthetic",
+      "motion": "waving",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "scratch_head",
+      "kind": "synthetic",
+      "motion": "head_scratch",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        },
+        {
+          "phase": "ready",
+          "frame": 62
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "raise_arm",
+      "kind": "synthetic",
+      "motion": "arm_raise",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        },
+        {
+          "phase": "ready",
+          "frame": 63
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "two_arm_stretch",
+      "kind": "synthetic",
+      "motion": "stretch",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        },
+        {
+          "phase": "ready",
+          "frame": 91
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "walking",
+      "kind": "synthetic",
+      "motion": "walking",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "stepping",
+      "kind": "synthetic",
+      "motion": "stepping",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "leaning",
+      "kind": "synthetic",
+      "motion": "leaning",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "torso_twist",
+      "kind": "synthetic",
+      "motion": "torso_twist",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "random_arm_motion",
+      "kind": "synthetic",
+      "motion": "random_arm",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 43
+        },
+        {
+          "phase": "backswing",
+          "frame": 59
+        },
+        {
+          "phase": "forward",
+          "frame": 66
+        },
+        {
+          "phase": "rearm",
+          "frame": 100
+        },
+        {
+          "phase": "ready",
+          "frame": 125
+        },
+        {
+          "phase": "backswing",
+          "frame": 130
+        },
+        {
+          "phase": "ready",
+          "frame": 132
+        },
+        {
+          "phase": "backswing",
+          "frame": 145
+        },
+        {
+          "phase": "forward",
+          "frame": 165
+        },
+        {
+          "phase": "rearm",
+          "frame": 199
+        },
+        {
+          "phase": "ready",
+          "frame": 209
+        }
+      ],
+      "max_depth": 0.221,
+      "max_rise": 0.307,
+      "max_peak": 1.936,
+      "last_reject_reason": "no release detected - swing your arm forward and up",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 2,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "rapid_flicks",
+      "kind": "synthetic",
+      "motion": "rapid_flick",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "one_arm_pumps",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "scratch_then_wave",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        },
+        {
+          "phase": "ready",
+          "frame": 62
+        },
+        {
+          "phase": "tracking",
+          "frame": 97
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "raise_lower_raise",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        },
+        {
+          "phase": "ready",
+          "frame": 55
+        },
+        {
+          "phase": "tracking",
+          "frame": 105
+        },
+        {
+          "phase": "ready",
+          "frame": 123
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "interrupted_backswing",
+      "kind": "synthetic",
+      "motion": "interrupted",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "rearm",
+          "frame": 26
+        },
+        {
+          "phase": "tracking",
+          "frame": 29
+        }
+      ],
+      "max_depth": 0.275,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": "right hand jumped 1.53 torso units in one frame",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 1,
+        "rejects": 1,
+        "lost": 8
+      }
+    },
+    {
+      "name": "interrupted_forward",
+      "kind": "synthetic",
+      "motion": "interrupted",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "rearm",
+          "frame": 34
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.185,
+      "max_peak": 6.642,
+      "last_reject_reason": "no pose detected",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 1,
+        "rejects": 0,
+        "lost": 8
+      }
+    },
+    {
+      "name": "low_confidence_swing",
+      "kind": "synthetic",
+      "motion": "low_confidence",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "rearm",
+          "frame": 29
+        },
+        {
+          "phase": "tracking",
+          "frame": 32
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 0.088,
+      "max_peak": 0.0,
+      "last_reject_reason": "right hand jumped 1.74 torso units in one frame",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 1,
+        "rejects": 1,
+        "lost": 6
+      }
+    },
+    {
+      "name": "arm_identity_flip",
+      "kind": "synthetic",
+      "motion": "identity_flip",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "rearm",
+          "frame": 27
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 0.088,
+      "max_peak": 0.0,
+      "last_reject_reason": "left hand jumped 1.95 torso units in one frame",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 1,
+        "rejects": 2,
+        "lost": 0
+      }
+    },
+    {
+      "name": "timestamp_gap_mid_swing",
+      "kind": "synthetic",
+      "motion": "timestamp_anomaly",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "rearm",
+          "frame": 29
+        },
+        {
+          "phase": "tracking",
+          "frame": 32
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 0.088,
+      "max_peak": 0.0,
+      "last_reject_reason": "right hand jumped 1.85 torso units in one frame",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 1,
+        "rejects": 1,
+        "lost": 8
+      }
+    },
+    {
+      "name": "fast_direct_raise",
+      "kind": "synthetic",
+      "motion": "arm_raise",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        },
+        {
+          "phase": "ready",
+          "frame": 68
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "single_pump_from_raised",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "tracking",
+          "frame": 37
+        },
+        {
+          "phase": "ready",
+          "frame": 53
+        },
+        {
+          "phase": "tracking",
+          "frame": 77
+        },
+        {
+          "phase": "ready",
+          "frame": 87
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "backswing_only",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "rearm",
+          "frame": 65
+        },
+        {
+          "phase": "ready",
+          "frame": 74
+        }
+      ],
+      "max_depth": 0.563,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": "no forward swing detected - swing your arm forward",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 1,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "backswing_weak_lift",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 30
+        },
+        {
+          "phase": "rearm",
+          "frame": 63
+        },
+        {
+          "phase": "ready",
+          "frame": 72
+        }
+      ],
+      "max_depth": 0.508,
+      "max_rise": 0.195,
+      "max_peak": 0.851,
+      "last_reject_reason": "no release detected - swing your arm forward and up",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 1,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "swing_stuttered_delivery",
+      "kind": "synthetic",
+      "motion": "bowling_swing",
+      "expected": 1,
+      "got": 1,
+      "pass": true,
+      "events": [
+        {
+          "frame": 31,
+          "arm": "right",
+          "up_speed": 4.966725265964158,
+          "rise": 0.7345752414855087,
+          "depth": 0.4793232577604166,
+          "hand_source": "wrist"
+        }
+      ],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "release",
+          "frame": 31
+        },
+        {
+          "phase": "follow_through",
+          "frame": 35
+        },
+        {
+          "phase": "rearm",
+          "frame": 49
+        },
+        {
+          "phase": "ready",
+          "frame": 58
+        }
+      ],
+      "max_depth": 0.479,
+      "max_rise": 1.916,
+      "max_peak": 4.967,
+      "last_reject_reason": "right hand jumped 1.61 torso units in one frame",
+      "counters": {
+        "releases": 1,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 1,
+        "lost": 0
+      }
+    },
+    {
+      "name": "punch_down",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "rearm",
+          "frame": 65
+        },
+        {
+          "phase": "ready",
+          "frame": 74
+        }
+      ],
+      "max_depth": 0.801,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": "no forward swing detected - swing your arm forward",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 1,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "crouch_delivery",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 28
+        },
+        {
+          "phase": "rearm",
+          "frame": 32
+        }
+      ],
+      "max_depth": 1.077,
+      "max_rise": 1.582,
+      "max_peak": 11.606,
+      "last_reject_reason": "your body jumped during the swing - keep your feet settled",
+      "counters": {
+        "releases": 0,
+        "blocked": 1,
+        "aborts": 1,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "turn_away_mid_swing",
+      "kind": "synthetic",
+      "motion": "combination",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        },
+        {
+          "phase": "ready",
+          "frame": 8
+        },
+        {
+          "phase": "backswing",
+          "frame": 20
+        },
+        {
+          "phase": "forward",
+          "frame": 27
+        },
+        {
+          "phase": "rearm",
+          "frame": 34
+        }
+      ],
+      "max_depth": 0.56,
+      "max_rise": 1.385,
+      "max_peak": 5.64,
+      "last_reject_reason": "you turned away from the camera mid-swing",
+      "counters": {
+        "releases": 0,
+        "blocked": 1,
+        "aborts": 1,
+        "rejects": 0,
+        "lost": 0
+      }
+    },
+    {
+      "name": "recorded_jumping_jacks_burpees",
+      "kind": "recorded-human",
+      "motion": "jumping_jacks",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": "move back so your hips and shoulders are visible",
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 126
+      }
+    },
+    {
+      "name": "recorded_waving",
+      "kind": "recorded-human",
+      "motion": "waving",
+      "expected": 0,
+      "got": 0,
+      "pass": true,
+      "events": [],
+      "phases": [
+        {
+          "phase": "tracking",
+          "frame": 0
+        }
+      ],
+      "max_depth": 0.0,
+      "max_rise": 0.0,
+      "max_peak": 0.0,
+      "last_reject_reason": null,
+      "counters": {
+        "releases": 0,
+        "blocked": 0,
+        "aborts": 0,
+        "rejects": 0,
+        "lost": 0
+      }
+    }
+  ]
+}

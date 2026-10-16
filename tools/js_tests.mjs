@@ -17,6 +17,9 @@ import { Settings, DEFAULTS } from '../src/game/settings.js';
 import { MouseInput, aimAngle, ReleaseNoise, makeThrowData } from '../src/input/mouse.js';
 import { eventToThrow, WebcamInput, TrackingService } from '../src/input/webcam.js';
 import { SwingDetector, SwingEvent, PHASE_WAITING, PHASE_READY, PHASE_BACKSWING, PHASE_FORWARD, PHASE_FOLLOW } from '../src/input/swing.js';
+import {
+  SwingClassifier, STATE_TRACKING, STATE_READY, STATE_BACKSWING, STATE_FORWARD, STATE_RELEASE,
+} from '../src/input/classifier.js';
 import { simulateRoll, Deck, DeckTimeline, rackPositions, PinPhysics } from '../src/physics.js';
 import { checkAnswer, TRIVIA_QUESTIONS } from '../src/game/questions.js';
 import { AudioSystem, AudioSettings } from '../src/game/audio.js';
@@ -627,7 +630,7 @@ testAsync('switching the throwing arm clears swing history without a throw', asy
         };
       },
     };
-    const input = new WebcamInput(service, new SwingDetector());
+    const input = new WebcamInput(service, new SwingClassifier());
     input.setGameReady(true);
     const step = (landmarks) => {
       service.publish(landmarks);
@@ -636,10 +639,10 @@ testAsync('switching the throwing arm clears swing history without a throw', asy
     // ready pose, then part-way into a backswing on the default arm
     for (let i = 0; i < 12; i++) step(poseResult({}).landmarks);
     for (const y of [0.66, 0.72, 0.78]) step(poseResult({ rightWristY: y }).landmarks);
-    assert.equal(input._detector.phase, PHASE_BACKSWING);
+    assert.equal(input._classifier.phase, STATE_BACKSWING);
     input.setPreferredArm('left');
     assert.equal(input.preferred_arm, 'left');
-    assert.equal(input._detector.phase, PHASE_WAITING);
+    assert.equal(input._classifier.phase, STATE_TRACKING);
     assert.equal(input.throw_data, null, 'the interrupted swing must not queue a throw');
   });
 });
@@ -671,21 +674,29 @@ function feedFixture(fixture, detector) {
     }
     const event = detector.update(result, dt);
     if (event !== null) events.push({ frame, event });
-    if (!runs.length || runs[runs.length - 1].phase !== detector.phase) {
+    if (!runs.length || runs[lastRunIndex(runs)].phase !== detector.phase) {
       runs.push({ phase: detector.phase, from: frame });
     }
   });
   return { events, runs };
 }
+function lastRunIndex(runs) { return runs.length - 1; }
 
+// IMPORTANT: tools/webcam_landmarks.json is *exercise footage* (Wikimedia
+// "Jumping jacks and burpees" by Taco fleur), not a genuine arm swing. The
+// fixture was previously mislabelled as a recorded swing, and its false
+// release became the Python/JavaScript parity reference - the exact mistake
+// this overhaul fixes. The legacy detector's reference behaviour is kept as a
+// parity contract below; the temporal classifier must reject the same trace
+// (tested in the classification section with the real WebcamInput).
 const swingFixture = loadWebcamFixture('webcam_landmarks.json');
 if (swingFixture) {
-  test('a real recorded arm swing releases exactly once at the reference frame', () => {
+  test('the legacy phase machine reproduces its Python reference on the recorded exercise footage', () => {
     const detector = new SwingDetector();
     const { events, runs } = feedFixture(swingFixture, detector);
     const reference = swingFixture.reference;
     assert.equal(events.length, reference.releases.length, 'release count matches the Python reference');
-    assert.equal(events.length, 1, 'the fixture contains one deliberate swing');
+    assert.equal(events.length, 1, 'the exercise footage triggers exactly one legacy release');
     const ref = reference.releases[0];
     assert.ok(Math.abs(events[0].frame - ref.frame) <= 1, `release frame ${events[0].frame} vs reference ${ref.frame}`);
     assert.equal(events[0].event.arm, ref.arm, 'throwing arm');
@@ -821,7 +832,7 @@ if (fs.existsSync(parityPath)) {
 
 // ---------------------------------------------------------------------------
 section('webcam tracking service (frame pacing and pose engines)');
-testAsync('the detector is stepped with camera frame times, not render frames', async () => {
+testAsync('the classifier is stepped with camera frame times, not render frames', async () => {
   await withBrowserStubs(async () => {
     const service = {
       _snapshot: { running: true, tracked: true, confidence: 0.9, landmarks: {}, fps: 25,
@@ -834,19 +845,28 @@ testAsync('the detector is stepped with camera frame times, not render frames', 
           frame_count: this._snapshot.frame_count + 1 };
       },
     };
-    const input = new WebcamInput(service, new SwingDetector());
+    const input = new WebcamInput(service, new SwingClassifier());
     input.setGameReady(true);
     service.publish(poseResult({ rightWristY: 0.60 }).landmarks, 1.0);
     input.update();
     service.publish(poseResult({ rightWristY: 0.66 }).landmarks, 1.1);   // 100 ms later
     input.update();
-    const detector = input._detector;
-    // smoothed = 0.5*0.66 + 0.5*0.60 = 0.63; raw = (0.63-0.60)/0.1 = 0.30/s
-    assert.ok(Math.abs(detector._raw_vel.right - 0.30) < 1e-9,
-      `raw velocity must use the 100 ms camera gap, got ${detector._raw_vel.right}`);
-    assert.ok(Math.abs(detector._vel.right - 0.135) < 1e-9);
-    // ...and a render-rate assumption would have produced 0.18, not 0.135
-    assert.ok(Math.abs(detector._vel.right - 0.18) > 1e-3);
+    const classifier = input._classifier;
+    // The classifier stores hand offsets relative to the shoulders in torso
+    // heights (y grows downward; this motion is downward). The first frame
+    // establishes the baseline; the second smooths with
+    // CLASSIFIER_POSITION_SMOOTHING (0.55), differentiated over the measured
+    // 100 ms camera gap; the velocity is EMA-smoothed (0.45):
+    //   rel = (wristY - shoulderY) / torso
+    const torso = 0.25;
+    const rel1 = (0.60 - 0.40) / torso;
+    const rel2 = (0.66 - 0.40) / torso;
+    const smoothed = 0.55 * rel2 + 0.45 * rel1;
+    const raw = (smoothed - rel1) / 0.1;
+    assert.ok(Math.abs(classifier._vel.right.y - 0.45 * raw) < 1e-9,
+      `smoothed velocity must use the 100 ms camera gap, got ${classifier._vel.right.y}`);
+    assert.ok(Math.abs(classifier._vel.right.y - 0.45 * (smoothed - rel1) / (1 / 60)) > 1e-3,
+      'a render-rate assumption would differ');
   });
 });
 
@@ -930,44 +950,44 @@ testAsync('a worker that dies falls back to the main-thread engine', async () =>
   });
 });
 
-test('webcam power follows the swing position, never a stale peak', () => {
+test('webcam power follows the swing progress, never a stale peak', () => {
   const service = {
     _snapshot: { running: true, tracked: true, confidence: 0.9, landmarks: {}, fps: 30, frame_count: 0, error: null, message: 'tracking' },
     is_running: true,
     snapshot() { return this._snapshot; },
     async start() {}, async stop() {}, setPreferredCamera() {},
   };
-  const input = new WebcamInput(service, new SwingDetector());
-  const detector = input._detector;
-  // _smooth holds the hand offset *relative to the shoulders* (image y grows
-  // downwards), and input/webcam_input.py's power is max(0, swing_pose) with
-  // swing_pose = -offset / (0.35 * torso) clamped to [-1, 1].
-  detector._torso_height = 0.25;
-  const scale = 0.35 * 0.25;
-  detector._smooth.right = [0.0, 0.0];          // hand level with the shoulders
-  detector._peak_up_speed = 2.0;                // a swing in flight...
-  detector._vel.right = -2.0;                   // ...must not show up here
+  const input = new WebcamInput(service, new SwingClassifier());
+  const classifier = input._classifier;
+  // Outside a swing the meter is empty even if the hand is high.
+  classifier._smooth.right = { x: 0.0, y: -0.25 };
   assert.equal(input.power, 0.0);
-  detector._smooth.right = [0.0, -scale];       // hand a full band above them
+  // In the forward stroke the meter follows the measured rise toward the
+  // release; the peak speed is not used directly.
+  classifier.phase = STATE_FORWARD;
+  classifier._swing_arm = 'right';
+  classifier._stroke_min_height = -1.0;
+  classifier._smooth.right = { x: 0.0, y: 0.73 };    // hand at -0.73, rise = 0.27
+  const midPower = input.power;
+  assert.ok(midPower > 0.5 && midPower < 1.0, String(midPower));
+  assert.equal(input.releaseEligible, true);
+  classifier._smooth.right = { x: 0.0, y: 0.8 };     // hand at -0.80, rise = 0.20
+  assert.ok(input.power < midPower, 'a smaller rise must not read as more power');
+  // Released (or followed through) the meter reads full.
+  classifier.phase = STATE_RELEASE;
   assert.equal(input.power, 1.0);
-  detector._smooth.right = [0.0, -0.8 * scale];
-  assert.ok(Math.abs(input.power - 0.8) < 1e-9, String(input.power));
-  // After a release the hand is back down, so the meter must fall back to the
-  // resting pose instead of staying at the peak upward speed.
-  detector._smooth.right = [0.0, 0.2];
-  assert.equal(input.power, 0.0);
 });
 
 // ---------------------------------------------------------------------------
-section('webcam deliberate-swing validation (no accidental releases)');
-// The phase machine in src/input/swing.js is a parity port of the Python
-// detector and stays as sensitive as the reference. Everything below drives
-// the real WebcamInput, which adds src/input/validate.js: a recognized swing
-// becomes a throw only when it is a single-arm, sustained, well-tracked
-// bowling-like stroke with a visible backswing (or an exceptionally fast
-// direct stroke). Fixtures marked "recorded" are real MediaPipe traces of a
-// real person from tools/testdata; everything else is synthetic landmark
-// sequences. No camera or human is involved here.
+section('webcam temporal classification (no accidental releases)');
+// The legacy phase machine in src/input/swing.js is a sensitive *motion*
+// sensor and remains a parity-tested module, but it is no longer the release
+// authority: WebcamInput drives src/input/classifier.js, which recognizes the
+// whole sequence tracking -> ready -> backswing -> forward -> release and
+// refuses anything that does not complete it. Fixtures marked "recorded" are
+// real MediaPipe traces of a real person from tools/testdata (negative
+// motions: exercise and waving); everything else here is synthetic landmark
+// sequences. No camera or human is involved in this file.
 function webcamHarness() {
   const service = {
     _snapshot: {
@@ -1001,7 +1021,7 @@ function webcamHarness() {
       };
     },
   };
-  const input = new WebcamInput(service, new SwingDetector());
+  const input = new WebcamInput(service, new SwingClassifier());
   input.setGameReady(true);
   const step = (landmarks, opts) => { service.publish(landmarks, opts); input.update(); };
   const stepPose = (poseOpts = {}, opts = {}) => step(poseResult(poseOpts).landmarks, opts);
@@ -1035,8 +1055,8 @@ test('a deliberate full swing releases exactly one throw', () => {
   assert.equal(throws.length, 1, 'exactly one throw');
   assert.equal(throws[0].source, 'webcam');
   assert.ok(throws[0].speed >= config.MIN_THROW_SPEED && throws[0].speed <= config.MAX_THROW_SPEED);
-  assert.equal(h.input._validator.accepted_count, 1);
-  assert.equal(h.input._validator.blocked_count, 0);
+  assert.equal(h.input._classifier.release_count, 1);
+  assert.equal(h.input._classifier.blocked_count, 0);
 });
 
 test('a second deliberate swing after the ready pose releases a second throw', () => {
@@ -1046,7 +1066,7 @@ test('a second deliberate swing after the ready pose releases a second throw', (
   h.swing();
   const second = h.drain();
   assert.equal(second.length, 1, 'one throw per swing');
-  assert.equal(h.input._validator.accepted_count, 2);
+  assert.equal(h.input._classifier.release_count, 2);
 });
 
 test('standing still never throws', () => {
@@ -1064,16 +1084,15 @@ test('normal idle sway with the arms down never throws', () => {
   assert.equal(h.drain().length, 0);
 });
 
-test('a natural arm repositioning never throws even if the raw detector fires', () => {
+test('a natural arm repositioning never throws', () => {
   const h = webcamHarness();
   for (let i = 0; i < 40; i++) h.stepPose({});
   for (const y of [0.60, 0.56, 0.52, 0.48, 0.44, 0.42, 0.40, 0.40, 0.40]) {
     h.stepPose({ rightWristY: y });
   }
   for (let i = 0; i < 20; i++) h.stepPose({ rightWristY: 0.40 });
-  assert.equal(h.drain().length, 0, 'the validator must refuse the release');
-  assert.ok(h.input._validator.blocked_count >= 1,
-    'the raw phase machine recognized the motion; the gate is what blocked it');
+  assert.equal(h.drain().length, 0, 'raising a hand must never throw');
+  assert.equal(h.input._classifier.release_count, 0);
 });
 
 test('slow waving (hands above the ready band) never throws', () => {
@@ -1082,7 +1101,7 @@ test('slow waving (hands above the ready band) never throws', () => {
     const y = 0.44 + 0.04 * Math.sin(i / 5);
     h.stepPose({ rightWristY: y, leftWristY: y });
   }
-  assert.equal(h.input._detector.phase, 'waiting');
+  assert.ok(![STATE_FORWARD, STATE_RELEASE].includes(h.input._classifier.phase));
   assert.equal(h.drain().length, 0);
 });
 
@@ -1123,7 +1142,7 @@ test('a sudden landmark jump mid-swing aborts instead of throwing', () => {
   h.stepPose({ rightWristY: 1.20 });        // teleporting wrist
   for (let i = 1; i <= 8; i++) h.stepPose({ rightWristY: 0.88 - 0.6 * i / 8 });
   assert.equal(h.drain().length, 0);
-  assert.ok(h.input._detector.rejected_count >= 1, 'the jump was rejected');
+  assert.ok(h.input._classifier.rejected_count >= 1, 'the jump was rejected');
 });
 
 test('low-confidence frames during the swing never release', () => {
@@ -1159,7 +1178,7 @@ test('tracking loss during a swing never releases', () => {
     h.stepPose({ rightWristY: 0.90 - 0.6 * i / 9 });
   }
   assert.equal(h.drain().length, 0, 'a release must not follow a tracking gap');
-  assert.ok(h.input._validator.blocked_count >= 1, 'the interrupted release was gated');
+  assert.ok(h.input._classifier.abort_count >= 1, 'the interrupted release was aborted');
 });
 
 test('tracking loss followed by recovery still allows a fresh deliberate swing', () => {
@@ -1188,7 +1207,7 @@ test('a run of stale frames mid-swing cancels the swing', () => {
   for (let i = 1; i <= 4; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
   const frozen = h.service._snapshot.frame_time;
   for (let k = 0; k < 5; k++) h.stepPose({ rightWristY: 0.85 }, { frameTime: frozen });
-  assert.equal(h.input._detector.phase, 'waiting', 'the incomplete swing was reset');
+  assert.equal(h.input._classifier.phase, STATE_TRACKING, 'the incomplete swing was reset');
   assert.equal(h.drain().length, 0);
 });
 
@@ -1196,10 +1215,10 @@ test('a camera restart mid-swing never inherits the incomplete swing', () => {
   const h = webcamHarness();
   for (let i = 0; i < 12; i++) h.stepPose({});
   for (let i = 1; i <= 4; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
-  assert.equal(h.input._detector.phase, 'backswing');
+  assert.equal(h.input._classifier.phase, STATE_BACKSWING);
   h.service.restartSession();
   h.stepPose({});
-  assert.equal(h.input._detector.phase, 'waiting');
+  assert.equal(h.input._classifier.phase, STATE_TRACKING);
   assert.equal(h.drain().length, 0);
   h.swing();
   assert.equal(h.drain().length, 1, 'a complete swing on the new session works');
@@ -1209,11 +1228,11 @@ testAsync('stopping and restarting the camera input clears the swing', async () 
   const h = webcamHarness();
   for (let i = 0; i < 12; i++) h.stepPose({});
   for (let i = 1; i <= 4; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
-  assert.equal(h.input._detector.phase, 'backswing');
+  assert.equal(h.input._classifier.phase, STATE_BACKSWING);
   await h.input.stop();
   await h.input.start();
   h.service._snapshot = { ...h.service._snapshot, running: true, tracked: true };
-  assert.equal(h.input._detector.phase, 'waiting');
+  assert.equal(h.input._classifier.phase, STATE_TRACKING);
   h.swing();
   assert.equal(h.drain().length, 1);
 });
@@ -1222,12 +1241,12 @@ test('switching the preferred arm mid-session clears the swing and the new arm t
   const h = webcamHarness();
   for (let i = 0; i < 12; i++) h.stepPose({});
   for (let i = 1; i <= 4; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
-  assert.equal(h.input._detector.phase, 'backswing');
+  assert.equal(h.input._classifier.phase, STATE_BACKSWING);
   h.input.setPreferredArm('left');
-  assert.equal(h.input._detector.phase, 'waiting');
+  assert.equal(h.input._classifier.phase, STATE_TRACKING);
   h.swing({ arm: 'left' });
   assert.equal(h.drain().length, 1, 'the selected left arm throws');
-  assert.equal(h.input._validator.accepted_count, 1);
+  assert.equal(h.input._classifier.release_count, 1);
 });
 
 test('returning from mouse mode to webcam mode does not inherit a swing', () => {
@@ -1246,9 +1265,12 @@ test('a duplicate acceptance from one physical swing is impossible', () => {
   const h = webcamHarness();
   h.swing();
   assert.equal(h.drain().length, 1);
-  const verdict = h.input._validator.check({ arm: 'right', up_speed: 2.0 });
-  assert.equal(verdict.ok, false, 'no second acceptance without a ready reset');
-  assert.match(String(verdict.reason), /already used/);
+  // The same motion again, with no ready hold in between: one physical swing
+  // must launch at most one ball, and the machine must re-arm first.
+  for (let i = 1; i <= 6; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
+  for (let i = 1; i <= 9; i++) h.stepPose({ rightWristY: 0.90 - 0.6 * i / 9 });
+  assert.equal(h.drain().length, 0, 'no second throw without re-arming');
+  assert.equal(h.input._classifier.release_count, 1);
 });
 
 test('a leftward hook and a rightward hook keep their opposite spin', () => {
@@ -1266,19 +1288,22 @@ test('a leftward hook and a rightward hook keep their opposite spin', () => {
 
 test('a stronger swing still throws faster than a gentle one', () => {
   const slow = webcamHarness();
-  slow.swing({ forward: 12, top: 0.34 });
+  slow.swing({ forward: 18, deep: 0.80, top: 0.50 });      // slow, low delivery
+  for (let i = 0; i < 6; i++) slow.stepPose({ rightWristY: 0.50 });   // ease to a stop
   const fast = webcamHarness();
-  fast.swing({ forward: 6, top: 0.24 });
+  fast.swing({ forward: 6, top: 0.24 });                   // snappy delivery
   const a = slow.drain()[0];
   const b = fast.drain()[0];
-  assert.ok(a && b);
+  assert.ok(a && b, `slow=${a ? a.speed : 'none'} fast=${b ? b.speed : 'none'}`);
   assert.ok(b.speed > a.speed, `fast ${b.speed} vs slow ${a.speed}`);
 });
 
 // Real recorded footage (tools/testdata/jumping_jacks_burpees.webm): exercise
-// arm raises. The raw detector fires on it (the Python reference does too);
-// the deliberate-swing gate must refuse the throw. This is the exact motion
-// that produced accidental throws before the gate existed.
+// arm raises. The legacy phase machine fires on it (the Python reference does
+// too), which is exactly why it is no longer the release authority. The
+// temporal classifier must refuse the throw even though the raw motion
+// contains releases - and it must refuse it *without even recognizing a
+// release*.
 const jjFixture = loadWebcamFixture('webcam_landmarks.json');
 if (jjFixture) {
   test('recorded jumping-jacks footage never produces a throw through the input', () => {
@@ -1300,9 +1325,8 @@ if (jjFixture) {
       h.step(lm, { tracked, confidence, dt });
     });
     assert.equal(h.drain().length, 0, 'exercise motion must not bowl');
-    assert.ok(h.input._detector.release_count >= 1,
-      'the raw phase machine recognized a release on this footage');
-    assert.ok(h.input._validator.blocked_count >= 1, 'the gate blocked it');
+    assert.equal(h.input._classifier.release_count, 0,
+      'the classifier must not even recognize a release in the exercise trace');
   });
 } else {
   console.log('  (tools/webcam_landmarks.json missing; run python tools/export_landmarks.py first)');
@@ -1329,6 +1353,7 @@ if (waveFixture2) {
       h.step(lm, { tracked, confidence, dt });
     });
     assert.equal(h.drain().length, 0);
+    assert.equal(h.input._classifier.release_count, 0);
   });
 }
 

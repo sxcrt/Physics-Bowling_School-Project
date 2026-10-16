@@ -596,7 +596,9 @@ export class Game {
       const detection = !!(status && status.tracked && !status.error);
       if (detection) this._handoff_stable += dt;
       else this._handoff_stable = 0.0;
-      const readyPose = detection && (status.phase === 'waiting' || status.phase === 'ready');
+      // During the handoff the input is not game-ready, so the classifier is
+      // idle in 'tracking'; 'ready' covers the moment it has already armed.
+      const readyPose = detection && (status.phase === 'tracking' || status.phase === 'ready');
       trackingReady = this._handoff_stable >= HANDOFF_STABLE_TIME && readyPose;
       if (trackingReady) this._handoff_progress = Math.min(1.0, this._handoff_progress + dt / HANDOFF_CONFIRM_TIME);
       else this._handoff_progress = Math.max(0.0, this._handoff_progress - dt / HANDOFF_CONFIRM_TIME);

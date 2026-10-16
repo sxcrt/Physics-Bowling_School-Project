@@ -311,13 +311,16 @@ could never catch this, because the Python reference fires on the same motion.
 
 What changed and what was verified:
 
-* **Deliberate-swing validation** (`src/input/validate.js`): a recognized
-  swing becomes a throw only with a fully tracked critical window, a
-  sustained/rising stroke, positional evidence of a backswing (or an
-  exceptionally fast direct stroke) and one-arm dominance; the detector's
-  `reject()` returns it to `waiting` with a player-readable notice. The raw
-  detector (`src/input/swing.js`) is unchanged and still parity-true (16
-  sequences, 0 mismatches).
+* **Temporal movement classifier** (`src/input/classifier.js`, replacing the
+  earlier `src/input/validate.js` gate): a throw requires the full
+  tracking -> ready -> backswing -> forward -> release sequence with a settled
+  wind-up, sustained expanding stroke, one-arm dominance, bounded body motion
+  and dense tracking; the recorded exercise trace no longer even reaches a
+  release (0 classifier releases, 0 launches). The legacy detector
+  (`src/input/swing.js`) is unchanged and still parity-true (16 sequences,
+  0 mismatches), and the classifier is evaluated separately against 57 labeled
+  traces in both JavaScript and Python (`tools/webcam_eval.mjs` /
+  `tools/webcam_eval.py`).
 * **Input lifecycle guards**: repeated/rewound camera frames are never fed to
   the detector and a run of them cancels the swing; the tracking service
   numbers its camera sessions and `WebcamInput` resets the swing on a session

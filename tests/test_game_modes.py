@@ -253,8 +253,8 @@ class TestWebcamGameplay(ModeTestCase):
 
 class TestFullWebcamSwing(ModeTestCase):
     def test_synthetic_swing_launches_the_ball_in_game(self):
-        """End-to-end: Game -> real WebcamInput -> swing detector -> ball."""
-        from input.swing import SwingDetector
+        """End-to-end: Game -> real WebcamInput -> classifier -> ball."""
+        from input.classifier import SwingClassifier
         from input.webcam_input import WebcamInput
         from tests.test_swing import DT, pose_result
         from tests.test_webcam_input import FakeClock, FakeService
@@ -265,7 +265,7 @@ class TestFullWebcamSwing(ModeTestCase):
         clock = FakeClock()
         log_dir = tempfile.mkdtemp(prefix='strike_lab_swing_test_')
         self.addCleanup(shutil.rmtree, log_dir, ignore_errors=True)
-        webcam = WebcamInput(service=service, detector=SwingDetector(),
+        webcam = WebcamInput(service=service, classifier=SwingClassifier(),
                              clock=clock,
                              log_path=os.path.join(log_dir, 'swing.log'))
         original = h.webcam
@@ -291,6 +291,8 @@ class TestFullWebcamSwing(ModeTestCase):
             feed(0.62 + 0.28 * i / 6)
         for i in range(1, 9):                    # forward swing and release
             feed(0.90 - 0.60 * i / 8)
+        for _ in range(10):                      # let the physics advance
+            feed(0.30)
 
         self.assertEqual(g.state, 'rolling')
         self.assertGreater(g.ball.physics.v, 2.0)
