@@ -185,7 +185,34 @@ export const SWING_PREFERRED_ARM = 'auto';
 export const SWING_LOG_ENABLED = false;            // no filesystem in the browser
 export const SWING_LOG_VERBOSE = false;
 export const SWING_LOG_EVERY_FRAMES = 15;
-export const WEBCAM_SHOW_TELEMETRY = true;
+export const WEBCAM_SHOW_TELEMETRY = false;        // player HUD shows status + phase, not detector telemetry
+
+// --- Deliberate-swing validation (browser) ---
+// The phase machine in src/input/swing.js is a byte-parity port of
+// input/swing.py, and stays that way. These constants configure the
+// acceptance gate in front of it (src/input/validate.js): a recognized swing
+// only becomes a throw when it is a single-arm, sustained, well-tracked
+// bowling-like stroke. Ordinary movement - two-arm raises, waving, leaning,
+// stepping, tracking flicker - fails at least one gate.
+export const SWING_VALIDATE_ENABLED = true;
+export const SWING_VALIDATE_WINDOW = 0.9;          // s of motion history examined per release
+export const SWING_VALIDATE_CRITICAL_TIME = 0.35;  // s before the release that must be fully valid
+export const SWING_VALIDATE_MIN_CRITICAL_FRAMES = 5;
+export const SWING_VALIDATE_MIN_VALID_RATIO = 0.8; // valid frames required in the window
+export const SWING_VALIDATE_MAX_INVALID_RUN = 1;   // consecutive unreliable frames allowed in the window
+export const SWING_VALIDATE_UP_SPEED = 0.30;       // 1/s; a frame counts as "rising" above this
+export const SWING_VALIDATE_MIN_UP_FRAMES = 3;     // sustained upward frames the stroke needs
+export const SWING_VALIDATE_RECENT_UP_TIME = 0.25; // s; the last rising frame must be this recent
+export const SWING_VALIDATE_MIN_PEAK = 0.75;       // 1/s; throwing hand peak upward speed
+export const SWING_VALIDATE_MIN_RISE = 0.35;       // torso heights the hand must rise
+export const SWING_VALIDATE_MIN_BACKSWING = 0.15;  // torso heights of downward travel before the rise
+export const SWING_VALIDATE_DIRECT_PEAK = 1.8;     // 1/s; direct strokes need this when no backswing was seen
+export const SWING_VALIDATE_DIRECT_RISE = 1.0;     // torso heights; ...and this much rise
+export const SWING_VALIDATE_DOMINANCE = 1.7;       // throwing arm must dominate the other arm's upward motion
+export const SWING_VALIDATE_OTHER_UP_ABS = 0.45;   // 1/s; absolute cap on the other arm's upward speed
+export const SWING_VALIDATE_OTHER_RISE_ABS = 0.35; // torso heights; absolute cap on the other arm's rise
+export const SWING_VALIDATE_MAX_STALE_FRAMES = 3;  // repeated camera frames before the swing state is reset
+export const SWING_VALIDATE_LOG_BLOCKED = true;    // console.debug one line per blocked release (dev aid)
 
 export const MESSAGE_DURATION = 4.0;               // s
 export const MAX_NAME_LENGTH = 12;

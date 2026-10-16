@@ -18,6 +18,9 @@ import { attachPointer, uiPointer, uiFromClient } from './input/pointer.js';
 import { attachKeyboard, heldKeys } from './input/keyboard.js';
 import { ballTexture } from './scene/textures.js';
 import { unlitMaterial } from './scene/shader.js';
+import {
+  fullscreenAvailable, isFullscreen, toggleFullscreen, onFullscreenChange, viewportSize,
+} from './ui/fullscreen.js';
 
 const DWELL_TIME = 1.0;
 const DWELL_COOLDOWN = 0.8;
@@ -35,8 +38,22 @@ class App {
 
     const stage = document.getElementById('stage');
     this.stage = stage;
+    this._fullscreenControls = [];
     this._fitStage();
+    // The stage must re-fit whenever the usable viewport changes: a window
+    // resize, entering/leaving fullscreen, an orientation change, or browser
+    // zoom (which fires resize and changes visualViewport). `_fitStage` reads
+    // the live viewport each time; the pointer mapping reads the stage's
+    // bounding rect, so both stay in step with the transform.
     window.addEventListener('resize', () => this._fitStage());
+    window.addEventListener('orientationchange', () => this._fitStage());
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => this._fitStage());
+    }
+    this._fullscreenOff = onFullscreenChange(() => {
+      this._fitStage();
+      this._syncFullscreenControls();
+    });
     const uiRoot = document.getElementById('ui-root');
     this.uiRoot = uiRoot;
     const canvasHost = document.getElementById('canvas-host');
@@ -102,10 +119,42 @@ class App {
     // The stage is a fixed 1280x720 reference grid; scale it as a whole to fit
     // the window (letterboxed) so the layout never distorts or clips. The
     // pointer mapping reads the stage's bounding rect, so it follows the
-    // transform automatically.
-    const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    // transform automatically, at any zoom level or window size.
+    const { width, height } = viewportSize();
+    const scale = Math.min(width / 1280, height / 720);
     this.stage.style.transform = scale === 1 ? 'none' : `scale(${scale})`;
+    this.stage.style.visibility = 'visible';
   }
+
+  // ==== Fullscreen ====
+  // Every control registered here gets its label switched between FULLSCREEN
+  // and EXIT FULLSCREEN, and is hidden when the browser cannot do fullscreen
+  // at all, so the game never offers a button that cannot work.
+  trackFullscreenControl(node, label = 'FULLSCREEN', exitLabel = 'EXIT FULLSCREEN') {
+    this._fullscreenControls.push({ node, label, exitLabel });
+    this._syncFullscreenControls();
+    return node;
+  }
+
+  _syncFullscreenControls() {
+    const supported = fullscreenAvailable();
+    const full = isFullscreen();
+    for (const control of this._fullscreenControls || []) {
+      const node = control.node;
+      if (!node) continue;
+      node.textContent = full ? control.exitLabel : control.label;
+      node.style.display = supported ? 'flex' : 'none';
+    }
+  }
+
+  async toggleFullscreen() {
+    const wanted = await toggleFullscreen();
+    this._syncFullscreenControls();
+    return wanted;
+  }
+
+  get fullscreen_supported() { return fullscreenAvailable(); }
+  get fullscreen_active() { return isFullscreen(); }
 
   play(cue) {
     const method = this.audio[cue];
@@ -311,6 +360,13 @@ class App {
   _bindKeys() {
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      // Alt+Enter toggles fullscreen from anywhere without stealing a key the
+      // game already uses (typing answers, aiming, menus).
+      if (e.altKey && e.key === 'Enter') {
+        e.preventDefault();
+        this.toggleFullscreen();
+        return;
+      }
       const key = normalizeKey(e.key);
       if (key === null) return;
       if (key === 'f12') { this._screenshot(); e.preventDefault(); return; }

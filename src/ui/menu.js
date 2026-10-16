@@ -94,6 +94,12 @@ export class SplashScreen extends MenuScreen {
     });
     const cta = el('div', '', this.root, 'OR CLICK ANYWHERE TO START');
     cta.style.cssText = `position:absolute;left:640px;top:505px;transform:translateX(-50%);font-size:15px;letter-spacing:2px;color:${css(COLORS.text_dim)};`;
+    const fullscreenButton = makeButton(this.root, 'FULLSCREEN', {
+      x: 640, y: 566, w: 220, h: 40, radius: 10, accent: COLORS.cyan,
+      variant: 'ghost', fontPx: 14, tracking: 2,
+      onClick: () => this.app.toggleFullscreen(),
+    });
+    this.app.trackFullscreenControl(fullscreenButton);
     this.hintBar([
       { key: 'ENTER' }, { text: 'play' }, { gap: true },
       { key: 'S' }, { text: 'settings' }, { gap: true },
@@ -150,6 +156,12 @@ export class MainMenuScreen extends MenuScreen {
       w: SIZES.quit_w, h: SIZES.quit_h, radius: 10, accent: COLORS.coral,
       variant: 'ghost', fontPx: SIZES.quit_font, onClick: () => this.app.quit(),
     });
+    const fullscreenButton = makeButton(this.root, 'FULLSCREEN', {
+      x: 1176, y: 30, w: 176, h: 36, radius: 10, accent: COLORS.cyan,
+      variant: 'ghost', fontPx: 14, tracking: 2,
+      onClick: () => { this.app.play('menu_select'); this.app.toggleFullscreen(); },
+    });
+    this.app.trackFullscreenControl(fullscreenButton);
     this.hintBar([
       { icon: 'arrow_left' }, { icon: 'arrow_right' }, { text: 'menu' }, { gap: true },
       { key: 'ENTER' }, { text: 'select' }, { gap: true },
@@ -860,6 +872,8 @@ export class SettingsScreen extends MenuScreen {
     });
     this._toggleRow(right, 'MUTE', settings.get('muted') ? 'ON' : 'OFF',
       () => this._flip('muted'), '', COLORS.cyan);
+    this._toggleRow(right, 'DEVELOPER DIAGNOSTICS', settings.get('debug_diagnostics') ? 'ON' : 'OFF',
+      () => this._flip('debug_diagnostics'), 'Webcam tracking detail in the readout (H)', COLORS.cyan);
 
     // Panels share one height (the taller stack), as in ui/menu_screens.py.
     const leftH = left.offsetHeight;

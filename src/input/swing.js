@@ -148,6 +148,14 @@ export class SwingDetector {
     this._ready_rel = { right: null, left: null };
   }
 
+  // Browser-only extension (not part of the Python parity contract): the
+  // deliberate-swing validator in src/input/validate.js refused a release the
+  // phase machine recognized. Return to waiting and tell the player what to
+  // correct; the physical swing can never leak into the next roll.
+  reject(reason) {
+    this._abort(reason || 'Swing not accepted - return to the ready position.');
+  }
+
   update(result, dt = 1.0 / 30.0) {
     let rawDt = Number(dt);
     if (!Number.isFinite(rawDt) || rawDt <= 0.0) rawDt = 1.0 / 30.0;

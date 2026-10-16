@@ -5,16 +5,21 @@
 //   (0, eval)(await (await fetch('/tools/webcam_fixture_check.js')).text())
 //   await window.hellsWebcamFixtureRun()
 //
-// It uses the production TrackingService, WebcamInput, swing detector, game
-// loop and physics. Only two process boundaries are substituted:
+// It uses the production TrackingService, WebcamInput, swing detector,
+// deliberate-swing validator, game loop and physics. Only two process
+// boundaries are substituted:
 //   * getUserMedia returns a canvas captureStream (this environment has no
 //     camera the browser can open), and
-//   * the pose landmarker replays a RECORDED MediaPipe trace exported from a
-//     real person's video by tools/export_landmarks.py.
+//   * the pose landmarker replays a deterministic landmark trace.
 // Everything from the service's frame publication to the ball leaving the
-// foul line is the shipping code path. Two fixtures:
-//   webcam_landmarks.json        - a real arm swing that must throw once,
-//   webcam_wave_landmarks.json   - real people waving, which must never throw.
+// foul line is the shipping code path. Three traces:
+//   * a scripted one-arm bowling swing (ready hold, backswing, forward
+//     delivery) - must launch exactly one ball;
+//   * recorded jumping jacks/burpees footage (tools/webcam_landmarks.json) -
+//     the raw phase machine fires on it, but the deliberate-swing gate must
+//     refuse it: zero launches;
+//   * recorded waving footage (tools/webcam_wave_landmarks.json) - zero
+//     launches.
 //
 // It mutates the game - run it on a throwaway load.
 (() => {
@@ -26,40 +31,75 @@
     return response.json();
   }
 
-  // A landmarker whose detectForVideo returns the recorded frames in order.
-  function fixtureLandmarker(fixture, state) {
-    const names = fixture.landmarks;
-    const n = names.length;
+  // MediaPipe landmark indices for the joints the swing pipeline reads.
+  const MEDIAPIPE_INDEX = {
+    left_shoulder: 11, right_shoulder: 12, left_elbow: 13, right_elbow: 14,
+    left_wrist: 15, right_wrist: 16, left_index: 19, right_index: 20,
+    left_pinky: 17, right_pinky: 18, left_thumb: 21, right_thumb: 22,
+    left_hip: 23, right_hip: 24, left_knee: 25, right_knee: 26,
+  };
+
+  function emptyPose() {
+    return new Array(33).fill(null).map(() => ({ x: 0, y: 0, z: 0, visibility: 0 }));
+  }
+
+  // One full upper-body pose in MediaPipe's flat landmark order.
+  function poseArray({ bodyX = 0.5, shoulderY = 0.40, hipY = 0.65, rightWristY = 0.62,
+                       leftWristY = 0.62, rightWristX = null, leftWristX = null } = {}) {
+    const full = emptyPose();
+    const put = (name, x, y, visibility = 0.96) => {
+      full[MEDIAPIPE_INDEX[name]] = { x, y, z: 0, visibility };
+    };
+    put('left_shoulder', bodyX - 0.12, shoulderY);
+    put('right_shoulder', bodyX + 0.12, shoulderY);
+    put('left_hip', bodyX - 0.10, hipY);
+    put('right_hip', bodyX + 0.10, hipY);
+    put('left_knee', bodyX - 0.10, hipY + 0.25);
+    put('right_knee', bodyX + 0.10, hipY + 0.25);
+    put('left_wrist', leftWristX === null ? bodyX - 0.18 : leftWristX, leftWristY);
+    put('right_wrist', rightWristX === null ? bodyX + 0.18 : rightWristX, rightWristY);
+    return full;
+  }
+
+  // The scripted deliberate swing: still ready hold, visible backswing,
+  // sustained forward/up delivery - the motion the validator must accept.
+  function scriptedSwingFrames() {
+    const frames = [];
+    for (let i = 0; i < 60; i++) frames.push(poseArray({}));
+    for (let i = 1; i <= 6; i++) frames.push(poseArray({ rightWristY: 0.62 + 0.28 * i / 6 }));
+    for (let i = 1; i <= 8; i++) frames.push(poseArray({ rightWristY: 0.90 + (0.28 - 0.90) * i / 8 }));
+    for (let i = 0; i < 30; i++) frames.push(poseArray({ rightWristY: 0.28 }));
+    return frames;
+  }
+
+  // A landmarker replaying `frames` (arrays of 33 landmarks) in order.
+  function sequenceLandmarker(frames, state) {
     return {
       detectForVideo() {
-        const index = Math.min(state.frame, fixture.frames.length - 1);
+        const index = Math.min(state.frame, frames.length - 1);
         state.frame += 1;
-        const entry = fixture.frames[index];
-        if (!entry.t || !entry.l) return { landmarks: [] };
-        const pose = [];
-        for (let i = 0; i < n; i++) {
-          const x = entry.l[i];
-          pose.push(x === null
-            ? { x: 0, y: 0, z: 0, visibility: 0 }
-            : { x, y: entry.l[n + i], z: 0, visibility: entry.l[2 * n + i] });
-        }
-        // Keep the flat landmark array in MediaPipe's index order: the service
-        // maps by index, so rebuild it from the fixture's named list.
-        const full = new Array(33).fill(null).map(() => ({ x: 0, y: 0, z: 0, visibility: 0 }));
-        const MEDIAPIPE_INDEX = {
-          left_shoulder: 11, right_shoulder: 12, left_elbow: 13, right_elbow: 14,
-          left_wrist: 15, right_wrist: 16, left_index: 19, right_index: 20,
-          left_pinky: 17, right_pinky: 18, left_thumb: 21, right_thumb: 22,
-          left_hip: 23, right_hip: 24, left_knee: 25, right_knee: 26,
-        };
-        names.forEach((name, i) => {
-          const indexInPose = MEDIAPIPE_INDEX[name];
-          if (indexInPose !== undefined) full[indexInPose] = pose[i];
-        });
-        return { landmarks: [full] };
+        return { landmarks: [frames[index]] };
       },
       close() {},
     };
+  }
+
+  // A landmarker replaying a recorded fixture file in order.
+  function fixtureFrames(fixture) {
+    const names = fixture.landmarks;
+    const n = names.length;
+    return fixture.frames.map((entry) => {
+      if (!entry.t || !entry.l) return emptyPose();
+      const full = emptyPose();
+      names.forEach((name, i) => {
+        const indexInPose = MEDIAPIPE_INDEX[name];
+        if (indexInPose === undefined || entry.l[i] === null) return;
+        full[indexInPose] = {
+          x: entry.l[i], y: entry.l[n + i], z: 0, visibility: entry.l[2 * n + i],
+        };
+      });
+      return full;
+    });
   }
 
   window.hellsWebcamFixtureRun = async function hellsWebcamFixtureRun() {
@@ -87,14 +127,15 @@
     mediaDevices.getUserMedia = async () => canvas.captureStream(30);
     const originalLoadLandmarker = service._loadLandmarker;
 
-    const throwOf = async (fixture, timeoutMs, expectThrow) => {
+    const throwOf = async (frames, timeoutMs, expectThrow) => {
       const state = { frame: 0 };
       service._delegate = 'CPU';
       // The fixture check replaces the pose engine with a replaying stub, so
       // it must run the main-thread engine (the worker owns its own engine).
       service._useWorker = false;
-      service._loadLandmarker = async () => fixtureLandmarker(fixture, state);
+      service._loadLandmarker = async () => sequenceLandmarker(frames, state);
       const detector = webcam._detector;
+      const validator = webcam._validator;
       const phases = [];
       let thrown = null;
       let launches = 0;
@@ -114,17 +155,18 @@
       }
       if (expectThrow) await sleep(300);   // catch any duplicate launch
       game.launch = originalLaunch;
+      const blocked = validator.blocked_count;
+      const detectorReleases = detector.release_count;
       await webcam.stop();
-      return { thrown, phases, launches, frames: state.frame };
+      return { thrown, phases, launches, frames: state.frame, blocked, detectorReleases };
     };
 
     try {
-      const swing = await loadFixture('webcam_landmarks.json');
-      const positive = await throwOf(swing, 30000, true);
-      check('recorded swing launches a ball', positive.thrown !== null,
-        positive.thrown ? `speed=${positive.thrown.speed.toFixed(2)}` : `frames=${positive.frames}`);
-      if (positive.thrown) {
-        const t = positive.thrown;
+      const swing = await throwOf(scriptedSwingFrames(), 30000, true);
+      check('a deliberate scripted swing launches a ball', swing.thrown !== null,
+        swing.thrown ? `speed=${swing.thrown.speed.toFixed(2)}` : `frames=${swing.frames}`);
+      if (swing.thrown) {
+        const t = swing.thrown;
         check('throw came from the webcam input', t.source === 'webcam');
         check('throw parameters are finite and in range',
           Number.isFinite(t.speed) && Number.isFinite(t.lateral_position)
@@ -132,15 +174,23 @@
           && t.speed >= 2.0 && t.speed <= 12.0,
           `speed=${t.speed.toFixed(2)} lateral=${t.lateral_position.toFixed(2)} yaw=${(t.launch_angle * 180 / Math.PI).toFixed(2)}`);
       }
-      check('exactly one launch from one swing', positive.launches === 1, `launches=${positive.launches}`);
-      const phaseNames = positive.phases.map((p) => p.phase);
+      check('exactly one launch from one swing', swing.launches === 1, `launches=${swing.launches}`);
+      const phaseNames = swing.phases.map((p) => p.phase);
       check('phase machine armed and swung',
         phaseNames.includes('ready') && (phaseNames.includes('forward') || phaseNames.includes('backswing')),
         phaseNames.join('>'));
 
+      const jj = await loadFixture('webcam_landmarks.json');
+      const exercise = await throwOf(fixtureFrames(jj), 20000, true);
+      check('recorded exercise motion (jumping jacks) never launches', exercise.thrown === null,
+        `detectorReleases=${exercise.detectorReleases} blocked=${exercise.blocked}`);
+      check('the exercise release was recognized but gated',
+        exercise.detectorReleases >= 1 && exercise.blocked >= 1,
+        `detectorReleases=${exercise.detectorReleases} blocked=${exercise.blocked}`);
+
       const wave = await loadFixture('webcam_wave_landmarks.json');
-      const negative = await throwOf(wave, 10000, true);
-      check('waving does not throw', negative.thrown === null);
+      const waving = await throwOf(fixtureFrames(wave), 10000, true);
+      check('waving does not throw', waving.thrown === null);
     } finally {
       mediaDevices.getUserMedia = originalGum;
       service._loadLandmarker = originalLoadLandmarker;

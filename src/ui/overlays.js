@@ -106,7 +106,7 @@ class Overlay {
 }
 
 export class PauseOverlay extends Overlay {
-  constructor(parent, { onResume, onRestart, onMenu, onSettings = null }) {
+  constructor(parent, { onResume, onRestart, onMenu, onSettings = null, onFullscreen = null }) {
     super(parent, { fullWidth: 0.46, height: 0.46, accent: PALETTE.amber });
     this.heading.textContent = 'PAUSED';
     const mk = (label, accent, fn) => makeButton(this.root, label, {
@@ -114,6 +114,11 @@ export class PauseOverlay extends Overlay {
     });
     this.buttons = [mk('RESUME', PALETTE.green, onResume), mk('RESTART MATCH', PALETTE.cyan, onRestart)];
     if (onSettings) this.buttons.push(mk('SETTINGS', PALETTE.magenta, onSettings));
+    this.fullscreenButton = null;
+    if (onFullscreen) {
+      this.fullscreenButton = mk('FULLSCREEN', PALETTE.cyan, onFullscreen);
+      this.buttons.push(this.fullscreenButton);
+    }
     this.buttons.push(mk('QUIT TO MENU', PALETTE.red, onMenu));
   }
   click() { return false; }

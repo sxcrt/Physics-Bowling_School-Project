@@ -133,6 +133,72 @@ from producing a throw. After a release the ball cannot be steered by the
 hand: the game launches the ball through `BallPhysics` and the player must
 return to the ready pose for the next roll.
 
+These are *motion* gates, not *intent* gates. A symmetric two-arm raise, a
+casual arm lift or a tracking flicker can satisfy them; the 2026-10-16
+accidental-throw investigation found exactly that (recorded jumping-jacks
+footage released a ball through the direct path). In the browser build a
+release recognized by this phase machine is therefore still checked by the
+deliberate-swing validator below before it becomes a throw. The Python
+detector's own behaviour is unchanged (it remains the parity reference).
+
+## 5a. Deliberate-swing validation (browser)
+
+`src/input/validate.js` (`SwingValidator`) sits between the detector and
+`ThrowData` creation in the browser build. It records every processed frame
+(the detector's post-frame hand positions, upward deltas, phase, validity)
+and only accepts a release when **all** of these hold:
+
+1. **Tracked throughout the critical window.** Every camera frame in the last
+   `SWING_VALIDATE_CRITICAL_TIME` (0.35 s) before the release is valid (pose
+   present, confidence above `SWING_MIN_CONFIDENCE`, sane frame interval),
+   with at least `SWING_VALIDATE_MIN_CRITICAL_FRAMES` frames in it. A release
+   can never ride on stale data, a confidence spike or tracking loss.
+2. **Reliable stroke window.** At least `SWING_VALIDATE_MIN_VALID_RATIO`
+   (80 %) of the last `SWING_VALIDATE_WINDOW` (0.9 s) is valid, with no more
+   than `SWING_VALIDATE_MAX_INVALID_RUN` consecutive unreliable frames
+   anywhere in it.
+3. **Sustained upward progression.** At least `SWING_VALIDATE_MIN_UP_FRAMES`
+   frames moved the throwing hand up at `SWING_VALIDATE_UP_SPEED` or faster,
+   the last one within `SWING_VALIDATE_RECENT_UP_TIME` of the release, and the
+   measured peak is at least `SWING_VALIDATE_MIN_PEAK`. A stalled stroke
+   cannot release.
+4. **Positional evidence.** Measured from the same played-back positions the
+   detector differentiated, scaled by torso height: the hand must rise at
+   least `SWING_VALIDATE_MIN_RISE`, and the stroke must either be preceded by
+   a visible backswing of `SWING_VALIDATE_MIN_BACKSWING` or be an
+   exceptionally strong direct stroke (`SWING_VALIDATE_DIRECT_PEAK` and
+   `SWING_VALIDATE_DIRECT_RISE`).
+5. **One-arm dominance.** The other arm's measured upward motion must stay
+   below both `SWING_VALIDATE_OTHER_UP_ABS` and the throwing arm's motion
+   divided by `SWING_VALIDATE_DOMINANCE` (and the same for its net rise), so
+   two-arm exercise cannot ride the throwing arm's trajectory.
+6. **One acceptance per ready cycle.** After an accepted throw, a
+   waiting/ready frame must be observed again before another release counts.
+
+A refusal aborts the detector back to `waiting` with a player-readable notice
+("no backswing - swing your arm back, then forward", "both arms moved together
+- throw with one arm", "tracking was interrupted just before the release"),
+counts in `WebcamInput.status().blocked_count`, and logs one `console.debug`
+line (`SWING_VALIDATE_LOG_BLOCKED`). The game input layer additionally never
+steps the detector with a repeated or rewound camera frame
+(`SWING_VALIDATE_MAX_STALE_FRAMES` consecutive stale frames reset the swing),
+never inherits a swing across a camera restart (the service numbers its
+sessions and the input resets on a change), an arm switch, `setGameReady`, or
+a transition back from mouse mode.
+
+Calibration (the `SWING_VALIDATE_*` block in `src/config.js`): synthetic
+one-arm swings (straight, slow, fast, both hooks, wrist-occlusion fallback,
+repeated swings, arm switch) release exactly once each; recorded
+jumping-jacks/burpees footage - which the phase machine does recognize - is
+refused; recorded waving never arms at all. A direct (no visible backswing)
+stroke needs a genuinely fast, large delivery; everything slower must show
+the backswing, which is the movement a frontal camera sees in a real bowling
+swing. `tools/js_tests.mjs` covers the whole matrix (stillness, idle sway,
+repositioning, slow/fast waving, leaning, walking, landmark jumps, low
+confidence, missing torso landmarks, tracking loss, loss+recovery, stale
+frames, camera restart, arm switch, mouse->webcam return, duplicate
+prevention, hooks and swing intensity).
+
 ## 6. Mapping to physics
 
 `event_to_throw` (the single calibration point):
@@ -173,9 +239,19 @@ to the shoulders, not from stepping or leaning.
 
 ## 8. Diagnostics
 
-The in-game HUD shows input mode, selected arm, tracking state and
-confidence, the current gesture phase, a next-action hint, and live
-telemetry (active arm, direction, speed, depth, rise).
+The normal player HUD (webcam chip) shows only player-facing information:
+tracking state, the current gesture phase, the selected throwing arm and the
+next-action hint. Engine details (GPU/CPU delegate, fps, frame time,
+inference time, confidence percentage, per-frame telemetry) are not part of
+normal play.
+
+Developer diagnostics live behind an explicit toggle: **Settings → DEVELOPER
+DIAGNOSTICS** (setting `debug_diagnostics`, off by default). With it on, the
+physics readout (`H`) prepends the webcam engine/phase/release lines, the
+blocked-release counter and the last rejection/validation reason; the same
+values are on `WebcamInput.status()` and blocked releases are logged to the
+console. Turning the toggle off clears the readout immediately, so no
+diagnostic text can linger on any screen.
 
 `webcam_swing.log` records phase transitions, releases (arm, peak speed and
 the mapped ball speed/lateral), and rejected frames with their reason
@@ -192,15 +268,20 @@ processed frames; leave it off for normal play so the log stays small.
   gesture is treated as the throwing arm. Select an arm to fence off the
   other one.
 * A deliberate, fast forward/up arm stroke from a still ready pose can be
-  accepted as a short throw (by design, because real backswings are often
-  hidden). Continuous smooth waving and casual motion are rejected.
+  accepted as a short throw when it is genuinely fast and large (the direct
+  fallback in §5a). Slower arm raises and continuous smooth waving are
+  rejected. This is the residual ambiguity of a single frontal camera; an
+  explicit backswing always has priority.
 * `SWING_MAX_JUMP` is a per-frame displacement limit. On a very slow camera
   (below roughly 15 processed frames/s) the fastest swings can exceed it and
   be rejected as tracking jumps; keep the capture rate up or raise the limit
   on such setups.
-* Thresholds have been validated with synthetic landmark sequences and a
-  hardware sanity check (camera + model + idle run); full real-world swing
-  accuracy still needs testing with a person in front of the camera.
+* Thresholds have been validated with synthetic landmark sequences, recorded
+  real-person footage (jumping jacks and waving as negative cases) and a
+  hardware sanity check (camera + model + idle run); a real deliberate
+  bowling swing in front of a live camera has still not been recorded in
+  this repository, so the positive calibration rests on the synthetic
+  one-arm swings.
 
 ## 10. The browser build
 
@@ -217,7 +298,8 @@ runtime around it:
   on the main thread, paced by `video.currentTime` polling; a worker that dies
   mid-session also falls back, so webcam mode never degrades to mouse-only
   because of the engine. The delegate in use is published in the snapshot
-  (`GPU (worker)`, `CPU`, ...) and shown in the HUD/readout.
+  (`GPU (worker)`, `CPU`, ...) and shown in the developer diagnostics readout,
+  never in the normal player HUD.
 * **Frame timestamps, not render frames, drive the detector.** Every snapshot
   carries `frame_time` (the capture time of the frame it came from); the
   input steps the detector with the delta between the camera frames it is
@@ -230,3 +312,9 @@ runtime around it:
   the two (smoothed positions, velocities, lateral velocity, hand-source
   switches, phases, release frames, throw parameters). `tools/js_tests.mjs`
   runs the same comparison in CI-style form.
+* **The deliberate-swing validator** (`src/input/validate.js`, §5a) is what
+  turns a recognized release into a throw in the browser; the raw detector
+  stays parity-true. The full 16-sequence parity diff therefore still reports
+  0 mismatches *and* the jumping-jacks trace is refused by the input layer
+  (asserted in `tools/js_tests.mjs` with `detector.release_count >= 1` and
+  `blocked_count >= 1`).

@@ -252,6 +252,9 @@
       show();
       const defects = window.hellsAudit().filter((d) => !d.el || !String(d.el).includes('brand-glow'));
       check(`${name} layout is clean`, defects.length === 0, JSON.stringify(defects));
+      const uiText = document.getElementById('ui-root').textContent;
+      check(`${name} shows no webcam diagnostics`,
+        !/WEBCAM (tracking|searching|error)\s+\[|conf \d+%|GPU \(|infer \d+ms|frame \d+ @|delegate:/i.test(uiText));
     }
 
     const playStates = [
@@ -315,6 +318,101 @@
     check('stage fits the live window',
       Math.abs(app.stage.getBoundingClientRect().width - 1280 * scale) < 2
       && Math.abs(app.stage.getBoundingClientRect().height - 720 * scale) < 2);
+    check('the page itself does not scroll', (() => {
+      const doc = document.documentElement;
+      return doc.scrollWidth <= window.innerWidth + 1 && doc.scrollHeight <= window.innerHeight + 1;
+    })(), `${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight} vs ${window.innerWidth}x${window.innerHeight}`);
+    check('the stage is centred horizontally and vertically', (() => {
+      const rect = app.stage.getBoundingClientRect();
+      const dx = Math.abs(rect.left - (window.innerWidth - rect.width) / 2);
+      const dy = Math.abs(rect.top - (window.innerHeight - rect.height) / 2);
+      return dx < 2 && dy < 2;
+    })());
+
+    // --- fullscreen ---------------------------------------------------------
+    check('fullscreen support is reported', typeof app.fullscreen_supported === 'boolean');
+    check('fullscreen controls exist on the splash, menu and pause screens',
+      app._fullscreenControls.length >= 3, `controls=${app._fullscreenControls.length}`);
+    if (app.fullscreen_supported) {
+      const originalRequest = document.documentElement.requestFullscreen;
+      let requested = 0;
+      let fakeElement = null;
+      document.documentElement.requestFullscreen = function requestFullscreen() {
+        requested += 1;
+        fakeElement = document.documentElement;
+        return Promise.resolve();
+      };
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true, get: () => fakeElement,
+      });
+      try {
+        await app.toggleFullscreen();
+        check('entering fullscreen goes through the browser API', requested === 1, `calls=${requested}`);
+        document.dispatchEvent(new Event('fullscreenchange'));
+        check('the interface switches to EXIT FULLSCREEN',
+          app._fullscreenControls.some((c) => c.node.textContent === 'EXIT FULLSCREEN'));
+        check('the stage re-fits while fullscreen',
+          Math.abs(app.stage.getBoundingClientRect().width / app.stage.getBoundingClientRect().height
+            - 1280 / 720) < 0.01);
+        fakeElement = null;
+        document.dispatchEvent(new Event('fullscreenchange'));
+        check('leaving fullscreen restores the FULLSCREEN label',
+          app._fullscreenControls.some((c) => c.node.textContent === 'FULLSCREEN'));
+        check('app.fullscreen_active rolls back', app.fullscreen_active === false);
+      } finally {
+        delete document.fullscreenElement;
+        document.documentElement.requestFullscreen = originalRequest;
+      }
+    } else {
+      check('fullscreen is unsupported: controls are hidden', (() => {
+        return app._fullscreenControls.every((c) => c.node.style.display === 'none');
+      })());
+    }
+
+    // --- webcam diagnostics are developer-only ------------------------------
+    const savedInputMode = game.input_mode;
+    const savedDebug = app.settings.get('debug_diagnostics');
+    const savedStatus = game._webcam_status;
+    game.input_mode = 'webcam';
+    game._webcam_status = {
+      running: true, tracked: true, confidence: 0.91, fps: 30, error: null,
+      phase: 'ready', phase_label: 'Ready', hint: 'Swing your arm forward and up to throw.',
+      lost_seconds: null, telemetry: '', arm: 'auto', message: 'tracking',
+      frame_count: 42, delegate: 'GPU (worker)', infer_ms: 12, frame_time: 1.2,
+      lost_frames: 0, blocked_count: 2, block_reason: 'both arms moved together - throw with one arm',
+      stale_frames: 0, session: 1, reject_reason: null, engine_fallback: null,
+      hand: 'wrist', speed: 0.4, direction: 'up', depth: 0.2, rise: 0.4, peak_up: 1.1,
+      swing_pose: 0.2, release_eligible: false, last_throw: null,
+    };
+    app.settings.set('debug_diagnostics', false);
+    game._physics_lines = [];
+    game._update_physics_readout();
+    game._hud();
+    const cleanText = game.hud.root.textContent;
+    check('normal play HUD hides engine/confidence/telemetry',
+      !/confidence|fps|GPU|CPU|delegate|infer|frame \d+ @/i.test(cleanText), cleanText.slice(0, 160));
+    check('normal play readout hides the webcam diagnostics block',
+      !/WEBCAM (tracking|searching|error)/.test(game.hud.readout.textContent));
+    app.settings.set('debug_diagnostics', true);
+    game._update_physics_readout();
+    game._hud();
+    check('the developer toggle restores the diagnostics',
+      /WEBCAM tracking/.test(game.hud.readout.textContent)
+      && /blocked 2/.test(game.hud.readout.textContent),
+      game.hud.readout.textContent.split('\n')[0]);
+    check('webcam HUD layout is clean with diagnostics on', window.hellsAudit().length === 0,
+      JSON.stringify(window.hellsAudit()));
+    app.settings.set('debug_diagnostics', false);
+    game._update_physics_readout();
+    game._hud();
+    check('webcam HUD layout is clean with diagnostics off', window.hellsAudit().length === 0,
+      JSON.stringify(window.hellsAudit()));
+    app.settings.set('debug_diagnostics', !!savedDebug);
+    game.input_mode = savedInputMode;
+    game._webcam_status = savedStatus;
+    game._physics_lines = [];
+    game._update_physics_readout();
+    game._hud();
 
     window.removeEventListener('error', onError, true);
     check('no uncaught page errors during the sweep', errors.length === 0, errors.join(' | '));

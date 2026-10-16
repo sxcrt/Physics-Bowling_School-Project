@@ -16,6 +16,7 @@ export const DEFAULTS = {
   bot_difficulty: 'medium',
   rush_duration: 180.0,
   show_physics_readout: true,
+  debug_diagnostics: false,
   reduce_motion: false,
 };
 
@@ -73,6 +74,7 @@ export class Settings {
     values.muted = !!values.muted;
     values.hand_menu_navigation = !!values.hand_menu_navigation;
     values.show_physics_readout = !!values.show_physics_readout;
+    values.debug_diagnostics = !!values.debug_diagnostics;
     values.reduce_motion = !!values.reduce_motion;
     try {
       const index = values.camera_index;

@@ -20,12 +20,10 @@ const SCORE_BAR = [180, 1096, 8, 76];   // (left, right, top, bottom) of the fra
 export function webcamFeedbackLines(status) {
   if (!status) return [];
   if (status.error) return [[`Webcam: unavailable - ${status.error}`, RED]];
-  if (!status.running) return [['Webcam: starting camera and pose model...', GRAY]];
-  const delegate = status.delegate ? ` [${status.delegate}]` : '';
-  const fps = Number(status.fps) > 0 ? `   ${Number(status.fps).toFixed(0)} fps` : '';
+  if (!status.running) return [['Webcam: starting camera...', GRAY]];
   let lines;
   if (status.tracked) {
-    lines = [[`Webcam: tracking OK (${Math.round(status.confidence * 100)}% confidence)${delegate}   arm: ${status.arm || 'auto'}${fps}`, GREEN],
+    lines = [['Webcam: tracking', GREEN],
              [`Phase: ${status.phase_label}`, status.phase === 'ready' ? YELLOW : GREEN]];
   } else if (!status.frame_count) {
     // The camera is open but the pose model has not produced a frame yet:
@@ -45,8 +43,18 @@ export function webcamFeedbackLines(status) {
       : `Webcam: tracking lost (${status.lost_seconds.toFixed(1)}s) - step back into view`, RED],
              [`Phase: ${status.phase_label}`, GRAY]];
   }
-  if (status.hint) lines.push([status.hint, GRAY]);
-  if (status.telemetry) lines.push([status.telemetry, [140, 145, 160]]);
+  const arm = String(status.arm || 'auto').toUpperCase();
+  lines.push([`Throwing arm: ${arm}  (C to change)`, [140, 145, 160]]);
+  // The detected release requires a visible backswing (or an exceptionally
+  // fast direct stroke); say so while the player is armed instead of letting
+  // a forward-only flick get refused. Notices (blocked releases, aborts)
+  // still take priority because they replace the detector's default hint.
+  const DEFAULT_READY_HINT = 'Swing your arm forward and up to throw.';
+  let hint = status.hint;
+  if (status.phase === 'ready' && (!hint || hint === DEFAULT_READY_HINT)) {
+    hint = 'Ready: swing your arm back, then forward and up.';
+  }
+  if (hint) lines.push([hint, GRAY]);
   return lines;
 }
 
@@ -791,7 +799,11 @@ export class Hud {
 
   _updateWebcam(inputMode, webcamStatus) {
     const lines = inputMode === 'webcam' ? webcamFeedbackLines(webcamStatus) : [];
-    if (!lines.length) { this._webcamPanel.style.display = 'none'; return; }
+    if (!lines.length) {
+      this._webcamPanel.style.display = 'none';
+      for (const line of this.webcamLines) line.textContent = '';
+      return;
+    }
     this._webcamPanel.style.display = 'block';
     const width = (this.question_panel.visible || this.challenge_panel.visible) ? 190 : 340;
     this._webcamPanel.style.width = `${width}px`;
@@ -809,6 +821,7 @@ export class Hud {
   _updatePhysics(physicsLines, halt = false, webcamMode = false) {
     if (halt || !physicsLines || !physicsLines.length) {
       this.readout.style.display = 'none';
+      this.readout.textContent = '';
       this._readoutHasData = false;
       return;
     }

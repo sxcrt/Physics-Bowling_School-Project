@@ -16,6 +16,7 @@
 import * as config from '../config.js';
 import { makeThrowData } from './mouse.js';
 import { SwingDetector } from './swing.js';
+import { SwingValidator } from './validate.js';
 
 export const LANDMARK_NAMES = [
   'nose', 'left_eye_inner', 'left_eye', 'left_eye_outer', 'right_eye_inner',
@@ -66,7 +67,7 @@ export function makeWebcamStatus(data = {}) {
     running: false, tracked: false, confidence: 0.0, fps: 0.0, error: null,
     phase: 'waiting', phase_label: 'Waiting for ready position', hint: '',
     lost_seconds: null, telemetry: '', arm: 'auto',
-    message: '', frame_count: 0, delegate: null, ...data,
+    message: '', frame_count: 0, delegate: null, session: 0, ...data,
   };
 }
 
@@ -111,6 +112,10 @@ export class TrackingService {
     this._fpsTimes = [];
     this._preferredIndex = null;
     this._delegate = null;                 // 'GPU'/'CPU' + '(worker)' (diagnostics)
+    // Bumped on every camera (re)start, including the mid-session engine
+    // fallback. The input layer watches it so a restart can never inherit a
+    // partially completed swing.
+    this._session = 0;
     this._lastVideoTime = -1;              // currentTime of the last processed frame
     this._watchdogVideoTime = -1;
     this._startedAt = 0;
@@ -187,11 +192,13 @@ export class TrackingService {
     this._inflight = 0;
     this._lastFrameAt = performance.now();
     this._workerFallbackReason = null;
+    this._session += 1;
     this._publish({
       running: true, error: null, message: 'starting camera...',
       tracked: false, confidence: 0.0, landmarks: {}, fps: 0.0,
       frame_count: 0, lost_frames: 0, last_tracked_at: null, frame: null,
       frame_time: null, infer_ms: 0.0, worker: false, delegate: null,
+      session: this._session,
     });
     let stream = null;
     let video = null;
@@ -393,7 +400,11 @@ export class TrackingService {
       if (generation !== this._generation) { try { landmarker.close(); } catch (_e) {} return; }
       this._landmarker = landmarker;
       this._running = true;
-      this._publish({ delegate: this._delegate, worker: false, message: 'tracking (main thread fallback)' });
+      // The engine changed under the player: this is a fresh tracking
+      // session for the input layer, so an in-flight swing is not inherited.
+      this._session += 1;
+      this._publish({ delegate: this._delegate, worker: false, message: 'tracking (main thread fallback)',
+        session: this._session });
       this._loopMain(generation, landmarker);
     } catch (error) {
       if (generation !== this._generation) return;
@@ -695,6 +706,7 @@ export class TrackingService {
       infer_ms: averageInfer,
       worker: this._worker !== null,
       delegate: this._delegate,
+      session: this._session,
       // Diagnostic: why the worker engine was not used (null when it was).
       engine_fallback: this._workerFallbackReason,
     });
@@ -702,23 +714,36 @@ export class TrackingService {
 }
 
 export class WebcamInput {
-  constructor(service = null, detector = null) {
+  constructor(service = null, detector = null, validator = null) {
     this._service = service || new TrackingService();
     this._detector = detector || new SwingDetector();
+    this._validator = validator || new SwingValidator();
     this._pending = null;
     this._game_ready = false;
     this._last_frame_count = -1;
     this._last_frame_time = null;
+    this._session = null;
+    this._stale_frames = 0;
     this._last_phase = null;
     this.last_throw = null;
     this.lateral = 0.0;
     this._lateral_smoothed = 0.0;
-    this._release_eligible = false;
   }
 
   update() {
     const snapshot = this._service.snapshot();
     if (!this._game_ready) return;
+    // A different camera session (stop/start, engine restart) is a different
+    // tracking timeline: drop anything the previous session was carrying.
+    if (snapshot.session !== undefined && snapshot.session !== this._session) {
+      this._session = snapshot.session;
+      this._reset_swing_state();
+    }
+    if (snapshot.running === false && !this._service.is_running) {
+      // The camera is gone or stopped: an in-flight swing must not survive it.
+      if (this._detector.phase !== 'waiting' || this._pending !== null) this._reset_swing_state();
+      return;
+    }
     if (snapshot.frame_count !== this._last_frame_count) {
       this._last_frame_count = snapshot.frame_count;
       this._processFrame(snapshot);
@@ -734,39 +759,46 @@ export class WebcamInput {
 
   discardPending() { this._pending = null; }
 
+  _reset_swing_state() {
+    this._detector.reset();
+    this._validator.reset();
+    this._pending = null;
+    this._last_frame_count = -1;
+    this._last_frame_time = null;
+    this._stale_frames = 0;
+  }
+
   setGameReady(ready) {
     ready = !!ready;
     if (ready === this._game_ready) return;
     this._game_ready = ready;
-    this._detector.reset();
-    this._pending = null;
-    this._last_frame_count = -1;
-    this._last_frame_time = null;
-    this._release_eligible = false;
+    // Every transition resets the detector and the validator, so a swing that
+    // started while the ball was rolling can never leak into the next roll,
+    // and the player must return to the ready position before swings arm.
+    this._reset_swing_state();
   }
 
   async start() {
-    this._detector.reset();
-    this._pending = null;
-    this._last_frame_count = -1;
-    this._last_frame_time = null;
+    this._reset_swing_state();
     this._last_phase = null;
     this.last_throw = null;
-    this._release_eligible = false;
     await this._service.start();
   }
 
   async stop() {
     await this._service.stop();
-    this._detector.reset();
-    this._pending = null;
-    this._last_frame_time = null;
+    this._reset_swing_state();
   }
 
   get is_running() { return this._service.is_running; }
 
   get preferred_arm() { return this._detector.preferred_arm; }
-  setPreferredArm(arm) { this._detector.setPreferredArm(arm); this._detector.reset(); }
+  setPreferredArm(arm) {
+    this._detector.setPreferredArm(arm);
+    // An arm-selection change mid-session must not let the previous swing
+    // continue: reset both layers.
+    this._reset_swing_state();
+  }
   setPreferredCamera(index) {
     if (this._service.setPreferredCamera) this._service.setPreferredCamera(index);
   }
@@ -816,6 +848,12 @@ export class WebcamInput {
       reject_reason: this._detector.last_reject_reason || null,
       last_throw: this.last_throw,
       engine_fallback: snapshot.engine_fallback || null,
+      // Deliberate-swing validation (developer readout only; the player HUD
+      // never shows these).
+      blocked_count: this._validator.blocked_count,
+      block_reason: this._validator.last_block_reason || null,
+      stale_frames: this._stale_frames,
+      session: snapshot.session === undefined ? null : snapshot.session,
     });
   }
 
@@ -855,8 +893,18 @@ export class WebcamInput {
     // used. The first frame after arming has no interval yet (1/30, exactly
     // like input/webcam_input.py).
     const frameTime = Number(snapshot.frame_time);
+    const hasTime = Number.isFinite(frameTime) && frameTime > 0;
+    if (hasTime && this._last_frame_time !== null && frameTime <= this._last_frame_time) {
+      // A repeated or rewound camera frame carries stale pose data: it must
+      // never move the detector, and a run of them invalidates any swing in
+      // flight (the camera stalled or restarted without a fresh timeline).
+      this._stale_frames += 1;
+      if (this._stale_frames > config.SWING_VALIDATE_MAX_STALE_FRAMES) this._reset_swing_state();
+      return;
+    }
+    this._stale_frames = 0;
     let dt = 1.0 / 30.0;
-    if (Number.isFinite(frameTime) && frameTime > 0) {
+    if (hasTime) {
       if (this._last_frame_time !== null) {
         dt = frameTime - this._last_frame_time;
         if (!Number.isFinite(dt) || dt <= 0.0) dt = 1.0 / 30.0;
@@ -873,20 +921,36 @@ export class WebcamInput {
       tracked: snapshot.tracked, timestamp: frameTime || performance.now() / 1000,
     };
     const event = this._detector.update(result, dt);
-    if (event !== null && this._pending === null) {
-      const throwData = eventToThrow(event);
-      this._pending = throwData;
-      this.last_throw = {
-        ...throwData,
-        arm: event.arm,
-        up_speed: event.up_speed,
-        lateral_speed: event.lateral_speed,
-        hand_offset: event.hand_offset,
-        hand_source: event.hand_source,
-        rise: event.rise,
-        depth: event.depth,
-      };
+    this._validator.observe(result, dt, this._detector);
+    this._last_phase = this._detector.phase;
+    if (event === null) return;
+    const verdict = this._validator.check(event);
+    if (!verdict.ok) {
+      // The phase machine recognized a release; the deliberate-swing gate did
+      // not accept it. Abort back to waiting so the rejected motion cannot
+      // leak into the next roll, and tell the player why.
+      this._detector.reject(verdict.reason);
+      this._last_phase = this._detector.phase;
+      if (config.SWING_VALIDATE_LOG_BLOCKED) {
+        try {
+          console.debug(`[hells-balls] webcam release blocked: ${verdict.reason}`);
+        } catch (_e) { /* console unavailable */ }
+      }
+      return;
     }
+    if (this._pending !== null) return;
+    const throwData = eventToThrow(event);
+    this._pending = throwData;
+    this.last_throw = {
+      ...throwData,
+      arm: event.arm,
+      up_speed: event.up_speed,
+      lateral_speed: event.lateral_speed,
+      hand_offset: event.hand_offset,
+      hand_source: event.hand_source,
+      rise: event.rise,
+      depth: event.depth,
+    };
   }
 
   _updateLateral(snapshot) {

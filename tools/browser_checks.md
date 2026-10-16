@@ -16,14 +16,17 @@ a self-contained check you can paste into the browser console.
   `.brand-glow`, `.hint-strip`) and anything `pointer-events: none` is never
   treated as obscuring text. Read-only.
 * `tools/browser_audit.js` — call `await window.hellsAuditRun()` for the full
-  67-check regression sweep: the held RIGHT SHIFT scorecard, its agreement with
+  87-check regression sweep: the held RIGHT SHIFT scorecard, its agreement with
   the scoring engine as rendered, focus-loss handling, multiplayer cards,
-  pins-mode cards, the shadow pipeline, every screen's layout, and the modal
-  overlays. It mutates the game; run it on a throwaway load.
+  pins-mode cards, the shadow pipeline, every screen's layout, the modal
+  overlays, viewport fit/centring/no-scroll, fullscreen wiring, and the
+  webcam-diagnostics on/off gating. It mutates the game; run it on a throwaway
+  load.
 * `tools/webcam_fixture_check.js` — call `await window.hellsWebcamFixtureRun()`
-  to drive the real `TrackingService` + `WebcamInput` + game loop with a
-  replayed recorded landmark trace behind a canvas `captureStream` camera: one
-  real swing must launch exactly one ball and real waving must launch none.
+  to drive the real `TrackingService` + `WebcamInput` + validator + game loop
+  with replayed landmark traces behind a canvas `captureStream` camera: a
+  scripted deliberate swing must launch exactly one ball, recorded jumping
+  jacks must be recognized but refused, and recorded waving must launch none.
   (It forces the main-thread pose engine, since the worker owns its own model.)
 * `tools/snapshot.js` — defines `hellsSnap(name)` and
   `hellsSnapZoom(name, x, y, w, h, scale)`, which composite the WebGL canvas and
@@ -48,7 +51,7 @@ Open <http://127.0.0.1:8124/>, wait for the splash, then in the console:
 
 ```js
 (0, eval)(await (await fetch('/tools/browser_audit.js')).text())
-await window.hellsAuditRun()      // console.table of 66 checks
+await window.hellsAuditRun()      // console.table of 87 checks
 ```
 
 `tools/browser_checks.md` (this file) records what each pass found.
@@ -297,5 +300,64 @@ Run in the page console (throwaway load):
 (0, eval)(await (await fetch('/tools/webcam_fixture_check.js')).text())
 await window.hellsWebcamFixtureRun()
 ```
+
+## Fifth pass: fullscreen, accidental webcam throws, HUD diagnostics (Chromium, 2026-10-16)
+
+Investigation of the reported accidental webcam throws found the root cause in
+the fixture set itself: `tools/webcam_landmarks.json` was exported from
+*Jumping jacks and burpees* footage and the phase machine released a ball on
+it (the previous pass recorded that launch as a success). Python-parity alone
+could never catch this, because the Python reference fires on the same motion.
+
+What changed and what was verified:
+
+* **Deliberate-swing validation** (`src/input/validate.js`): a recognized
+  swing becomes a throw only with a fully tracked critical window, a
+  sustained/rising stroke, positional evidence of a backswing (or an
+  exceptionally fast direct stroke) and one-arm dominance; the detector's
+  `reject()` returns it to `waiting` with a player-readable notice. The raw
+  detector (`src/input/swing.js`) is unchanged and still parity-true (16
+  sequences, 0 mismatches).
+* **Input lifecycle guards**: repeated/rewound camera frames are never fed to
+  the detector and a run of them cancels the swing; the tracking service
+  numbers its camera sessions and `WebcamInput` resets the swing on a session
+  change, an arm switch, `setGameReady`, or a stop/start, so no restart can
+  inherit an incomplete swing.
+* **HUD cleanup**: the webcam chip now shows only tracking/phase/arm/hint; the
+  engine delegate, confidence, fps, frame time, inference time and detector
+  telemetry moved behind **Settings → DEVELOPER DIAGNOSTICS** (off by default,
+  cleared when turned off). Diagnostics cannot render on menus, results, the
+  Lab, or mouse-input games (asserted by token sweeps over `#ui-root`).
+* **Fullscreen**: `src/ui/fullscreen.js` (feature detection, bounded requests,
+  change events) plus visible FULLSCREEN/EXIT FULLSCREEN controls on the
+  splash, main menu and pause overlay and an Alt+Enter shortcut; the stage
+  re-fits on `fullscreenchange`, resize, orientation change, browser zoom and
+  `visualViewport` changes (the pointer mapping reads the stage rect, verified
+  to map the stage centre to UI (0, 0) at 800×600…3440×1440).
+
+Evidence on the dev server and on `tools/vercel_sim.py 8130 --with-tools`:
+
+* `node tools/js_tests.mjs` → **117 passed, 0 failed** (26 new: the full
+  negative movement matrix, both recorded fixtures through the input layer,
+  stale frames, session restart, arm switch, mouse→webcam return, duplicate
+  prevention, hooks/intensity, plus a tracking-session lifecycle test).
+* `await window.hellsAuditRun()` → **87/87 checks pass** (fullscreen wiring
+  with a stubbed browser API, viewport fit/centring/no-scroll, diagnostics
+  on/off, every screen and play state).
+* `await window.hellsWebcamFixtureRun()` → **8/8 pass** on the production file
+  set: a scripted one-arm swing launches exactly one ball, the recorded
+  jumping-jacks trace is *recognized by the detector but refused* (0 launches),
+  recorded waving launches nothing.
+* `python tools/webcam_parity_dump.py` + `webcam_parity_run.mjs` +
+  `webcam_parity_compare.mjs` → 16 sequences, 0 mismatches.
+* `python -m pytest tests/test_swing.py tests/test_swing_release.py
+  tests/test_webcam_input.py tests/test_tracking.py tests/test_release_model.py
+  -q` → 150 passed (Python reference unmodified).
+
+Not verified here: a real fullscreen entry triggered by a physical click
+(the harness browser receives no OS input events in this environment; the
+request path is covered with a stubbed API and the graceful-failure path with
+a real rejected request), and a live human bowling swing in front of a real
+camera.
 
 

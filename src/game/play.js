@@ -124,7 +124,11 @@ export class Game {
       onRestart: () => { this._play('menu_select'); this.restart_match(); },
       onMenu: () => { this._play('menu_select'); this._quit_to_menu(); },
       onSettings: () => { this._play('menu_select'); this._open_settings(); },
+      onFullscreen: () => { this._play('menu_select'); if (this.app) this.app.toggleFullscreen(); },
     });
+    if (this.app && this.app.trackFullscreenControl && this.pause_overlay.fullscreenButton) {
+      this.app.trackFullscreenControl(this.pause_overlay.fullscreenButton);
+    }
     this.results_overlay = new ResultsOverlay(this.uiRootEl, {
       onRematch: () => this.restart_match(),
       onMenu: () => this._quit_to_menu(),
@@ -942,6 +946,15 @@ export class Game {
     return this.show_physics_panel;
   }
 
+  // Developer-only tracking diagnostics. The normal readout shows the compact
+  // physics summary; the webcam engine/phase/release detail is only rendered
+  // when the player turns on "Developer diagnostics" in Settings (off by
+  // default), so ordinary play never looks like a debug console.
+  _debug_diagnostics() {
+    if (this.settings === null || this.settings === undefined) return false;
+    return !!this.settings.get('debug_diagnostics', false);
+  }
+
   _update_physics_readout() {
     const throwData = this.last_throw;
     const deck = this.pins.deck;
@@ -968,20 +981,23 @@ export class Game {
     lines.push(`L = ${ball.angular_momentum.toFixed(2)} kg m^2/s   revs ${ball.revolutions.toFixed(1)}`);
     if (this.mode.gate !== modes.GATE_NONE || this.last_result === null) lines.push(`source: ${source}`);
     else lines.push(`pins ${this.last_result.pins}   (${source})`);
-    // In webcam mode the live tracking diagnostics come first: they are what a
-    // developer watching the readout actually needs while a swing misbehaves,
-    // and the throw parameters below repeat themselves in the "last throw" line.
+    // In webcam mode the live tracking diagnostics come first, but only when
+    // the developer toggle is on: they are what a developer watching the
+    // readout needs while a swing misbehaves, and the throw parameters below
+    // repeat themselves in the "last throw" line.
     const webcamLines = this._webcam_diagnostics();
     this._physics_lines = webcamLines.length ? [...webcamLines, ...lines] : lines;
   }
 
-  // Live webcam diagnostics for the physics readout (the game's existing
-  // development readout, hidden unless the physics panel is on). One compact
+  // Live webcam diagnostics for the physics readout, rendered only with the
+  // "Developer diagnostics" setting on (see _debug_diagnostics). One compact
   // line per concern: capture/engine health, what the detector is measuring,
   // the release decision, and the throw that came out - enough to identify a
   // stuck phase, a starving camera or a rejected frame without dumping
-  // per-frame data.
+  // per-frame data. Console logging of blocked releases stays available from
+  // the input layer regardless of this UI.
   _webcam_diagnostics() {
+    if (!this._debug_diagnostics()) return [];
     if (this.input_mode !== 'webcam') return [];
     const status = this._webcam_status;
     if (!status) return [];
@@ -1000,6 +1016,9 @@ export class Game {
       `swing ${status.direction || 'still'} ${Math.abs(Number(status.speed) || 0).toFixed(2)}/s`
         + `   peak ${Number(status.peak_up || 0).toFixed(2)}/s`
         + `   release ${status.release_eligible ? 'armed' : 'not armed'}`
+        + `   blocked ${Number(status.blocked_count) || 0}`
+        + `   stale ${Number(status.stale_frames) || 0}`
+        + (status.block_reason ? `   last blocked: ${status.block_reason}` : '')
         + (status.reject_reason ? `   last reject: ${status.reject_reason}` : ''),
     ];
     const lastThrow = status.last_throw;
