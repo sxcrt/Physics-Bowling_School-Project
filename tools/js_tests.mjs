@@ -1059,6 +1059,42 @@ test('a deliberate full swing releases exactly one throw', () => {
   assert.equal(h.input._classifier.blocked_count, 0);
 });
 
+// The common real-world delivery: no separate wind-up, the arm just rises
+// forward and up from the settled ready pose. Real players bowl this way
+// (see the recorded swing log in the repository history) and the detector
+// must accept it, with a higher bar on the rise than a wind-up delivery.
+test('a direct forward swing from the ready pose releases (no wind-up)', () => {
+  const h = webcamHarness();
+  for (let i = 0; i < 30; i++) h.stepPose({});
+  for (let i = 1; i <= 14; i++) h.stepPose({ rightWristY: 0.62 - 0.30 * i / 14 });
+  const throws = h.drain();
+  assert.equal(throws.length, 1, 'a no-wind-up delivery must release');
+  assert.equal(h.input._classifier.release_count, 1);
+  assert.equal(h.input._classifier.blocked_count, 0);
+});
+
+test('the left arm can throw a direct delivery', () => {
+  const h = webcamHarness();
+  for (let i = 0; i < 30; i++) h.stepPose({});
+  for (let i = 1; i <= 14; i++) h.stepPose({ leftWristY: 0.62 - 0.30 * i / 14 });
+  const throws = h.drain();
+  assert.equal(throws.length, 1);
+  assert.equal(h.input._classifier.release_count, 1);
+});
+
+// The shallow wind-up from the real recorded session: a fast, small downward
+// drift (0.3-0.4 torso/s, a few centimetres deep) reverses immediately into
+// the forward swing. It must not be stuck waiting for a deep backswing.
+test('a shallow fast wind-up followed by a forward swing releases', () => {
+  const h = webcamHarness();
+  for (let i = 0; i < 30; i++) h.stepPose({});
+  for (const y of [0.635, 0.65, 0.66, 0.67]) h.stepPose({ rightWristY: y });
+  for (let i = 1; i <= 14; i++) h.stepPose({ rightWristY: 0.67 - 0.37 * i / 14 });
+  const throws = h.drain();
+  assert.equal(throws.length, 1, 'a short wind-up must still release');
+  assert.equal(h.input._classifier.blocked_count, 0);
+});
+
 test('a second deliberate swing after the ready pose releases a second throw', () => {
   const h = webcamHarness();
   h.swing();
@@ -1084,14 +1120,15 @@ test('normal idle sway with the arms down never throws', () => {
   assert.equal(h.drain().length, 0);
 });
 
-test('a natural arm repositioning never throws', () => {
+test('a natural arm repositioning (slow raise) never throws', () => {
   const h = webcamHarness();
   for (let i = 0; i < 40; i++) h.stepPose({});
-  for (const y of [0.60, 0.56, 0.52, 0.48, 0.44, 0.42, 0.40, 0.40, 0.40]) {
-    h.stepPose({ rightWristY: y });
-  }
+  // A casual reposition is slow: the hand drifts up over ~1.5 s, well under
+  // the forward-stroke speed a delivery needs. (A *fast* upward stroke from
+  // the ready pose is a delivery by design - see the direct-throw tests.)
+  for (let i = 1; i <= 45; i++) h.stepPose({ rightWristY: 0.62 - 0.22 * i / 45 });
   for (let i = 0; i < 20; i++) h.stepPose({ rightWristY: 0.40 });
-  assert.equal(h.drain().length, 0, 'raising a hand must never throw');
+  assert.equal(h.drain().length, 0, 'a slow raise must never throw');
   assert.equal(h.input._classifier.release_count, 0);
 });
 
@@ -1134,15 +1171,28 @@ test('walking and stepping across the frame never throws', () => {
   assert.equal(h.drain().length, 0);
 });
 
-test('a sudden landmark jump mid-swing aborts instead of throwing', () => {
+test('a single landmark jump mid-swing is resynced, not fatal', () => {
+  const h = webcamHarness();
+  for (let i = 0; i < 12; i++) h.stepPose({});
+  h.stepPose({ rightWristY: 0.70 });
+  h.stepPose({ rightWristY: 0.78 });
+  h.stepPose({ rightWristY: 1.20 });        // teleporting wrist (one bad frame)
+  for (let i = 1; i <= 8; i++) h.stepPose({ rightWristY: 0.88 - 0.6 * i / 8 });
+  assert.equal(h.drain().length, 1, 'one glitch frame must not cancel a real swing');
+  assert.ok(h.input._classifier.rejected_count >= 1, 'the jump was still recorded as rejected');
+});
+
+test('two landmark jumps in one swing abort it', () => {
   const h = webcamHarness();
   for (let i = 0; i < 12; i++) h.stepPose({});
   h.stepPose({ rightWristY: 0.70 });
   h.stepPose({ rightWristY: 0.78 });
   h.stepPose({ rightWristY: 1.20 });        // teleporting wrist
+  h.stepPose({ rightWristY: 0.05 });        // and again, a moment later
   for (let i = 1; i <= 8; i++) h.stepPose({ rightWristY: 0.88 - 0.6 * i / 8 });
-  assert.equal(h.drain().length, 0);
-  assert.ok(h.input._classifier.rejected_count >= 1, 'the jump was rejected');
+  assert.equal(h.drain().length, 0, 'repeated teleports must not stitch into a throw');
+  assert.ok(h.input._classifier.abort_count >= 1, 'the second jump aborted the swing');
+  assert.ok(h.input._classifier.rejected_count >= 2, 'both jumps were counted');
 });
 
 test('low-confidence frames during the swing never release', () => {
@@ -1157,7 +1207,7 @@ test('low-confidence frames during the swing never release', () => {
   assert.equal(h.drain().length, 0);
 });
 
-test('partially missing landmarks during the swing never release', () => {
+test('hips dropping out of frame mid-swing do not cancel the throw', () => {
   const h = webcamHarness();
   for (let i = 0; i < 12; i++) h.stepPose({});
   for (let i = 1; i <= 6; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
@@ -1166,18 +1216,44 @@ test('partially missing landmarks during the swing never release', () => {
     if (i >= 4 && i <= 6) { delete result.landmarks.left_hip; delete result.landmarks.right_hip; }
     h.step(result.landmarks);
   }
-  assert.equal(h.drain().length, 0);
+  assert.equal(h.drain().length, 1, 'a hip dropout must be carried by the last-good scale');
 });
 
-test('tracking loss during a swing never releases', () => {
+test('a long landmark outage during the swing never releases', () => {
   const h = webcamHarness();
   for (let i = 0; i < 12; i++) h.stepPose({});
   for (let i = 1; i <= 6; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
   for (let i = 1; i <= 9; i++) {
-    if (i === 5) { for (let k = 0; k < 3; k++) h.step(null, { tracked: false, confidence: 0 }); }
+    const result = poseResult({ rightWristY: 0.90 - 0.6 * i / 9 });
+    if (i >= 4 && i <= 11) {
+      delete result.landmarks.left_shoulder; delete result.landmarks.right_shoulder;
+    }
+    h.step(result.landmarks);
+  }
+  assert.equal(h.drain().length, 0, 'without the torso anchor nothing may release');
+});
+
+test('a brief tracking dropout mid-swing is bridged', () => {
+  const h = webcamHarness();
+  for (let i = 0; i < 12; i++) h.stepPose({});
+  for (let i = 1; i <= 6; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
+  for (let i = 1; i <= 9; i++) {
+    if (i === 4) { for (let k = 0; k < 3; k++) h.step(null, { tracked: false, confidence: 0 }); }
     h.stepPose({ rightWristY: 0.90 - 0.6 * i / 9 });
   }
-  assert.equal(h.drain().length, 0, 'a release must not follow a tracking gap');
+  assert.equal(h.drain().length, 1, 'a short dropout must not cancel a real swing');
+  assert.equal(h.input._classifier.abort_count, 0);
+});
+
+test('a sustained tracking loss during a swing never releases', () => {
+  const h = webcamHarness();
+  for (let i = 0; i < 12; i++) h.stepPose({});
+  for (let i = 1; i <= 6; i++) h.stepPose({ rightWristY: 0.62 + 0.28 * i / 6 });
+  for (let i = 1; i <= 9; i++) {
+    if (i === 5) { for (let k = 0; k < 8; k++) h.step(null, { tracked: false, confidence: 0 }); }
+    h.stepPose({ rightWristY: 0.90 - 0.6 * i / 9 });
+  }
+  assert.equal(h.drain().length, 0, 'a release must never follow a long tracking gap');
   assert.ok(h.input._classifier.abort_count >= 1, 'the interrupted release was aborted');
 });
 

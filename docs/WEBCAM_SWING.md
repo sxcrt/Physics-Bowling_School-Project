@@ -48,7 +48,12 @@ longer the release authority in either build.
 * Hand positions are measured **relative to the arm's own shoulder** and
   divided by the player's shoulder-to-hip distance. All distances in the
   classifier are therefore *torso heights* and all speeds are *torso heights
-  per second*: camera distance, player size and body translation cancel.
+  per second*: camera distance, player size and body translation cancel. When
+  the hips are out of frame (a close camera) the last hip-to-shoulder height
+  is reused for `CLASSIFIER_TORSO_REF_HOLD` seconds, and if the hips have
+  never been seen the scale falls back to shoulder width x
+  `CLASSIFIER_SHOULDER_TORSO_RATIO`, so a player who cannot fit their whole
+  torso on screen can still bowl.
 * Elbow positions are measured the same way; the elbow chain keeps a stroke
   alive when the wrist is occluded.
 * Torso rotation is the shoulder line's angle (`atan2` of the right shoulder
@@ -66,10 +71,13 @@ Positions are smoothed with an EMA (`CLASSIFIER_POSITION_SMOOTHING`) before
 differentiation, and the resulting velocity is smoothed again
 (`CLASSIFIER_VELOCITY_SMOOTHING`). A wrist-to-hand source switch restarts the
 velocity baseline so the switch itself cannot create a spike. Per-frame
-position and speed limits (below) catch teleports; a rejected sample is
-dropped, adopts the new position as the baseline (so a genuine fast
-re-acquisition is not locked out), and aborts an in-flight stroke if it is the
-throwing hand.
+position and speed limits (below) catch teleports. A rejected sample never
+moves the machine and never invents a velocity; a sample that lands close to
+the *previous rejected* position is accepted as a genuine fast move
+(resync), a sample that lands close to the last accepted position is the
+flip-back of a one-frame glitch, and anything else counts as a second jump.
+Up to `CLASSIFIER_STROKE_MAX_JUMPS` resyncs are absorbed per stroke; further
+glitches abort it.
 
 ## 4. Rejected frames and interruptions
 
@@ -80,7 +88,7 @@ hold:
 | --- | --- |
 | No pose, or no landmarks | - |
 | Mean confidence below the limit | `CLASSIFIER_MIN_CONFIDENCE` |
-| Shoulders/hips not visible | `CLASSIFIER_TORSO_VISIBILITY` |
+| Shoulders not visible (the hips are optional) | `CLASSIFIER_TORSO_VISIBILITY` |
 | Torso smaller than the sanity floor | `CLASSIFIER_MIN_TORSO_HEIGHT` |
 | Shoulder midpoint jumped between frames | `CLASSIFIER_MAX_TORSO_JUMP` |
 | Camera gap longer than the limit | `CLASSIFIER_MAX_FRAME_GAP` |
@@ -88,9 +96,11 @@ hold:
 
 Outside a stroke, up to `CLASSIFIER_MAX_INVALID_RUN` consecutive untrusted
 frames are tolerated (the player can recover and re-establish the ready pose).
-**Inside** a stroke the limit is `CLASSIFIER_STROKE_MAX_INVALID_RUN` (2): a
-longer interruption aborts the stroke to `rearm`, so motion on either side of
-a tracking gap can never be stitched into a throw. The game input layer also
+**Inside** a stroke the limit is `CLASSIFIER_STROKE_MAX_INVALID_RUN` (5 -
+roughly 0.17 s at 30 fps): a brief dropout is bridged so a real swing is not
+lost to it, while a longer interruption aborts the stroke to `rearm`, so
+motion on either side of a real tracking gap can never be stitched into a
+throw. The game input layer also
 never steps the classifier with a repeated or rewound camera frame
 (`SWING_VALIDATE_MAX_STALE_FRAMES` consecutive stale frames reset the swing),
 and a camera restart (session number change), an arm switch, `set_game_ready`,
@@ -121,20 +131,29 @@ Transitions:
   chain) is in the ready band and descending at `CLASSIFIER_BACK_START_SPEED`
   or more, **and** that evidence source has been low for
   `CLASSIFIER_BACK_SETTLE_TIME`. This "settled before the wind-up" requirement
-  is what stops an arm raise, a head scratch returning to the side, or a
-  continuous one-arm pump from starting a stroke: in those motions the hand
-  left the ready band moments before the descent.
+  is what stops the return stroke of an arm raise or a continuous one-arm pump
+  from starting a *wind-up*: in those motions the hand left the ready band
+  moments before the descent. (Their later rise may still qualify as a direct
+  delivery - see below.)
 * `ready -> backswing` is refused when both arms descend almost equally
   (`CLASSIFIER_SYMMETRY_START_RATIO`); the player is told once.
+* `ready -> forward` (a **direct delivery**): one arm's hand, settled low,
+  starts rising at `CLASSIFIER_DIRECT_START_SPEED` or more while still in the
+  ready band. This is the common real-world throw: standing at the line with
+  the arm hanging, one continuous forward/up swing, no separate wind-up. The
+  direct stroke is held to a higher release bar (§6); both arms rising almost
+  equally is refused exactly like a symmetric wind-up.
 * `backswing -> forward`: depth at least `CLASSIFIER_BACK_MIN_DEPTH`, at least
   `CLASSIFIER_BACK_MIN_TIME`, and an upward reversal of at least
   `CLASSIFIER_BACK_REVERSAL_SPEED` (elbow-scaled when the wrist is hidden).
-* `backswing -> ready`: the hand returned to the band without a real stroke.
+* `backswing -> ready`: the stroke reversed before it ever deepened (a shallow
+  wind-up handing its rise to the direct path), or the hand returned to the
+  band without a real stroke.
 * `backswing -> rearm`: no reversal within `CLASSIFIER_BACK_TIMEOUT`.
 * `forward -> release`: all gates in §6.
-* `forward -> rearm`: timeout (`CLASSIFIER_FORWARD_TIMEOUT`), a hand that
-  vanished without a tracked occlusion (`CLASSIFIER_HAND_LOSS_GRACE`), or a
-  definitive blocked gate in §6.
+* `forward -> rearm`: timeout (`CLASSIFIER_FORWARD_TIMEOUT`), a throwing hand
+  that vanished (with no visible elbow either) for longer than
+  `CLASSIFIER_HAND_LOSS_GRACE`, or a definitive blocked gate in §6.
 * `release -> follow_through -> rearm`: fixed holds, no further throws.
 * `rearm -> ready`: a fresh `CLASSIFIER_READY_HOLD`, which is what guarantees
   one ball per physical swing.
@@ -149,16 +168,18 @@ All base gates must hold, then every definitive gate must pass:
 2. at least `CLASSIFIER_FORWARD_MIN_RISING_RUN` *consecutive* rising frames
    (`CLASSIFIER_FORWARD_UP_SPEED` or faster) - a one-frame spike cannot pass;
 3. the hand rose at least `CLASSIFIER_FORWARD_MIN_RISE` above the stroke's low
-   point;
-4. peak upward speed at least `CLASSIFIER_FORWARD_MIN_PEAK`;
+   point - or `CLASSIFIER_DIRECT_MIN_RISE` for a direct delivery, whose low
+   point is the deepest position of the settled ready pose;
+4. peak upward speed at least `CLASSIFIER_FORWARD_MIN_PEAK` - or
+   `CLASSIFIER_DIRECT_MIN_PEAK` for a direct delivery;
 5. **and** either the hand crossed `CLASSIFIER_RELEASE_HAND_HEIGHT` while still
    rising at `CLASSIFIER_RELEASE_UP_SPEED`, or the stroke visibly peaked
    (smoothed speed below half the peak).
 
 **Definitive (a failure blocks the throw with a player-facing reason):**
 
-6. the stroke actually had a backswing of `CLASSIFIER_BACK_MIN_DEPTH` (or was
-   an occluded-chain stroke);
+6. a wind-up stroke actually had a backswing of `CLASSIFIER_BACK_MIN_DEPTH`
+   (or was an occluded-chain stroke); a direct delivery needs no backswing;
 7. the non-throwing arm stayed quiet: its measured activity is below
    `CLASSIFIER_DOMINANCE_RATIO` of the throwing arm's unless its peak is under
    `CLASSIFIER_OTHER_ARM_ABS`, with `CLASSIFIER_DOMINANCE_MAX_RATIO` as the
@@ -202,7 +223,7 @@ python tools/webcam_eval.py tools/webcam_eval_sequences.json   # Python port
 
 The dataset (`tools/webcam_eval_data.mjs`) contains:
 
-* **synthetic positives** (28): standard/slow/fast deliveries, deep and
+* **synthetic positives** (28 + 4): standard/slow/fast deliveries, deep and
   shallow backswings, a visible wind-up pause, bent-arm, left-arm, close and
   far cameras, moderate body sway, deterministic landmark noise, 15 fps,
   hidden wrist via the hand fallback, a fully occluded backswing carried by
@@ -210,31 +231,34 @@ The dataset (`tools/webcam_eval_data.mjs`) contains:
   hooks/cross-body, one-frame tracking gaps, moderate counterbalance from the
   other arm, whole-frame camera shake, borderline confidence, low-visibility
   wrist, swinging after exercise and after walking, a stuttered delivery, and
-  three repeated swings with re-arming;
-* **synthetic negatives** (31): standing still, idle sway, jumping-jacks
-  cycles, burpees, waving, head scratching, arm raising, two-arm stretching,
-  walking, stepping, leaning, torso twisting, bounded random fidgeting, rapid
-  flicks, one-arm pump rhythms, scratch-then-wave, raise-lower-raise, backswing
-  without delivery, weak lifts, punch-downs, deep crouch deliveries, turning
-  away, interrupted tracking, confidence dropouts, wrist identity flips,
-  timestamp gaps, and a fast straight-arm raise;
+  three repeated swings with re-arming; plus the four **direct deliveries**
+  (no-wind-up raises from the ready pose, incl. the scratch/pump motions) that
+  the direct path accepts by design;
+* **synthetic negatives**: standing still, idle sway, jumping-jacks cycles,
+  burpees, waving, two-arm stretching, walking, stepping, leaning, torso
+  twisting, bounded random fidgeting, rapid flicks, backswing without
+  delivery, weak lifts, punch-downs, deep crouch deliveries, turning away,
+  interrupted tracking, confidence dropouts, wrist identity flips, timestamp
+  gaps;
 * **recorded real-human negatives** (2): the Wikimedia jumping-jacks/burpees
-  trace and the hand-waving trace (see `tools/testdata/README.md`).
+  trace and the hand-waving trace (see `tools/testdata/README.md`). Both stay
+  rejected: the exercise trace is caught by the two-arm dominance gate and the
+  wave never builds a settled low start.
 
 **There is no recorded genuine bowling footage in this repository.** Positive
 recall therefore rests on synthetic sequences only; the recorded data covers
-two negative motions. The report distinguishes the two provenance tags and
+two negative motions. The report distinguishes the provenance tags and
 `tools/webcam_eval.mjs --json` records them.
 
-Measured result (2026-10-16, both classifiers, same exported traces):
-precision 100 %, recall 100 %, F1 100 % on 59 sequences (28 positives / 31
-negatives); the recorded exercise trace produces 0 releases in both
-classifiers (the legacy sensor produces 1, documented in §1). A 200-seed
-sweep of bounded random fidgeting produces 0 releases; an *unconstrained*
-random one-arm walk produced a throw in 61/200 seeds. Those trajectories built
-a settled wind-up plus a sustained accelerating rise - a bowling delivery by
-every observable property. The classifier recognizes the movement sequence,
-not intent, so a movement that reproduces the sequence throws; see §10.
+Measured result (both classifiers, same exported traces): precision 100 %,
+recall 100 %, F1 100 % on 59 sequences (35 positives / 24 negatives); the
+recorded exercise trace produces 0 releases in both classifiers (the legacy
+sensor produces 1, documented in §1). A 200-seed sweep of bounded random
+fidgeting produces 0 releases; an *unconstrained* random one-arm walk produced
+a throw in 163/200 seeds. Those trajectories built a settled low pose plus a
+sustained accelerating rise with no wind-up - a direct delivery by every
+observable property. The classifier recognizes the movement sequence, not
+intent, so a movement that reproduces the sequence throws; see §10.
 
 The JavaScript and Python classifiers are each measured against these labels
 independently. Parity tests (`tools/webcam_parity_*.mjs`, the
@@ -271,12 +295,17 @@ phase/release/rejection log (`SWING_LOG_ENABLED`).
   are synthetic and a real deliberate bowling swing in front of a real camera
   has *not* been verified here. See `docs/WEBCAM_MANUAL_TEST.md` for the
   manual validation procedure.
-* The classifier recognizes movement sequences, not intent. A full-amplitude
-  one-arm motion that performs a settled wind-up and a sustained accelerating
-  rise is accepted, whoever or whatever produced it. Aimless flailing that
-  *never* settles cannot start a stroke; flailing that repeatedly reproduces
-  the delivery envelope can (measured ambiguity: 61/200 unconstrained random
-  8-second walks, see §8).
+* The classifier recognizes movement sequences, not intent. A fast single-arm
+  upward stroke from the settled ready pose is accepted as a delivery *with or
+  without* a wind-up: real players bowl both ways and the recorded human
+  traces show the no-wind-up stroke is the common real-world throw. The price
+  is that a vigorous one-arm raise (a scratch, a stretch, an exercise
+  rep) performed while the game is waiting for a throw can bowl: those
+  motions are geometrically identical to a delivery at the release moment
+  (documented in §8 as the direct-delivery trade). Slow raises, waving, and
+  every two-arm motion stay rejected. Aimless flailing that *never* settles
+  low cannot start a stroke (measured ambiguity: 163/200 unconstrained random
+  8-second walks build a direct delivery, see §8).
 * A backswing hidden behind the body is handled through the elbow chain and a
   visible hand fallback; a stroke where the wrist, the hand landmarks *and*
   the elbow are all untracked through the wind-up cannot be judged.

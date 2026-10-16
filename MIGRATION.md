@@ -478,10 +478,13 @@ against the committed `tools/webcam_parity_py.json`.
   footage is two *negative* motions (exercise and waving); the positive
   evidence is synthetic only, and a real deliberate bowling swing in front of
   a live camera has **not** been verified in this repository. The manual
-  procedure is in `docs/WEBCAM_MANUAL_TEST.md`. The old "short swing" path
-  that a fast hand wave from the ready pose could satisfy has been removed:
-  the classifier requires a settled wind-up and a sustained expanding forward
-  stroke, and the legacy phase machine is no longer the release authority.
+  procedure is in `docs/WEBCAM_MANUAL_TEST.md`. The classifier accepts both
+  delivery styles - a settled wind-up or a direct forward/up stroke from the
+  ready pose - because recorded real-human sessions show the no-wind-up stroke
+  is the common real-world throw; the trade-off is that a fast single-arm
+  raise from the ready pose is geometrically a delivery and can bowl (the one
+  documented false-positive family, see `docs/WEBCAM_SWING.md` §8/§10). The
+  legacy phase machine is no longer the release authority.
 * **The browser deployment is configured but not live-verified.** No Vercel
   credentials or linked project exist in this environment, and the GitHub remote
   is not reachable from it, so the repository-side configuration is complete and

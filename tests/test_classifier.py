@@ -172,11 +172,11 @@ class TestEverydayMotion(unittest.TestCase):
                                     left_wrist_y=y))
         self.assertEqual(script.events, [])
 
-    def test_raising_one_arm_never_throws(self):
+    def test_raising_one_arm_slowly_never_throws(self):
         script = ClassifierScript()
         script.hold_ready()
-        for i in range(1, 10):                  # straight up, no backswing
-            script.feed_y(READY_Y - 0.34 * i / 9)
+        for i in range(1, 40):                  # a slow, casual raise, no wind-up
+            script.feed_y(READY_Y - 0.34 * i / 39)
         for _ in range(20):
             script.feed_y(0.28)
         for i in range(1, 10):
@@ -184,7 +184,29 @@ class TestEverydayMotion(unittest.TestCase):
         self.assertEqual(script.events, [])
         self.assertEqual(script.classifier.release_count, 0)
 
-    def test_one_arm_pump_rhythm_never_throws(self):
+    def test_a_direct_forward_swing_releases(self):
+        """The common real-world delivery: no wind-up, arm rises from ready."""
+        script = ClassifierScript()
+        self.assertTrue(script.hold_ready())
+        for i in range(1, 15):
+            script.feed_y(READY_Y - 0.32 * i / 14)
+        self.assertEqual(len(script.events), 1)
+        self.assertEqual(script.events[0].arm, 'right')
+
+    def test_a_shallow_fast_windup_then_forward_swing_releases(self):
+        """A short down-drift that reverses into the forward swing counts."""
+        script = ClassifierScript()
+        self.assertTrue(script.hold_ready())
+        for y in (0.635, 0.65, 0.66, 0.67):
+            script.feed_y(y)
+        for i in range(1, 15):
+            script.feed_y(0.67 - 0.37 * i / 14)
+        self.assertEqual(len(script.events), 1)
+
+    def test_one_arm_pump_rhythm_releases_once_and_cannot_rearm(self):
+        # A fast one-arm upward stroke from the settled ready pose is a
+        # delivery by design (documented trade); the rhythm cannot rearm
+        # between strokes, so at most the first pump throws.
         script = ClassifierScript()
         script.hold_ready(frames=30)
         for _ in range(5):
@@ -192,7 +214,8 @@ class TestEverydayMotion(unittest.TestCase):
                 script.feed_y(READY_Y - 0.40 * i / 7)
             for i in range(1, 8):               # straight back down
                 script.feed_y(0.22 + 0.40 * i / 7)
-        self.assertEqual(script.events, [])
+        self.assertEqual(len(script.events), 1)
+        self.assertEqual(script.classifier.release_count, 1)
 
     def test_weak_lift_after_backswing_never_throws(self):
         script = ClassifierScript()
@@ -207,18 +230,31 @@ class TestEverydayMotion(unittest.TestCase):
 
 
 class TestTrackingQuality(unittest.TestCase):
-    def test_tracking_loss_mid_swing_aborts(self):
+    def test_a_sustained_tracking_loss_mid_swing_aborts(self):
         script = ClassifierScript()
         self.assertTrue(script.hold_ready())
         for i in range(1, 7):
             script.feed_y(READY_Y + 0.28 * i / 6)
         for i in range(1, 10):
             if i == 3:
-                for _ in range(6):
+                for _ in range(8):
                     script.feed(PoseResult.missing(0.0))
             script.feed_y(DEEP_Y - 0.60 * i / 9)
         self.assertEqual(script.events, [])
         self.assertGreaterEqual(script.classifier.abort_count, 1)
+
+    def test_a_brief_tracking_dropout_mid_swing_is_bridged(self):
+        script = ClassifierScript()
+        self.assertTrue(script.hold_ready())
+        for i in range(1, 7):
+            script.feed_y(READY_Y + 0.28 * i / 6)
+        for i in range(1, 10):
+            if i == 4:
+                for _ in range(3):
+                    script.feed(PoseResult.missing(0.0))
+            script.feed_y(DEEP_Y - 0.60 * i / 9)
+        self.assertEqual(len(script.events), 1)
+        self.assertEqual(script.classifier.abort_count, 0)
 
     def test_low_confidence_mid_swing_never_releases(self):
         script = ClassifierScript()
@@ -231,16 +267,54 @@ class TestTrackingQuality(unittest.TestCase):
                                     confidence=0.2 if low else None))
         self.assertEqual(script.events, [])
 
-    def test_a_startled_hand_teleport_aborts_the_swing(self):
+    def test_a_single_hand_teleport_is_resynced_not_fatal(self):
+        script = ClassifierScript()
+        self.assertTrue(script.hold_ready())
+        for i in range(1, 5):
+            script.feed_y(READY_Y + 0.28 * i / 6)
+        script.feed_y(0.10)                     # teleporting wrist (one frame)
+        for i in range(1, 9):
+            script.feed_y(DEEP_Y - 0.60 * i / 9)
+        self.assertEqual(len(script.events), 1)
+        self.assertGreaterEqual(script.classifier.rejected_count, 1)
+
+    def test_two_hand_teleports_in_one_swing_abort_it(self):
         script = ClassifierScript()
         self.assertTrue(script.hold_ready())
         for i in range(1, 5):
             script.feed_y(READY_Y + 0.28 * i / 6)
         script.feed_y(0.10)                     # teleporting wrist
+        script.feed_y(1.60)                     # and again, far from both baselines
         for i in range(1, 9):
             script.feed_y(DEEP_Y - 0.60 * i / 9)
         self.assertEqual(script.events, [])
-        self.assertGreaterEqual(script.classifier.rejected_count, 1)
+        self.assertGreaterEqual(script.classifier.abort_count, 1)
+
+    def test_a_hip_dropout_mid_swing_does_not_cancel_the_throw(self):
+        script = ClassifierScript()
+        self.assertTrue(script.hold_ready())
+        for i in range(1, 7):
+            script.feed_y(READY_Y + 0.28 * i / 6)
+        for i in range(1, 10):
+            result = pose_result(right_wrist_y=DEEP_Y - 0.60 * i / 9)
+            if 4 <= i <= 6:
+                result.landmarks.pop('left_hip', None)
+                result.landmarks.pop('right_hip', None)
+            script.feed(result)
+        self.assertEqual(len(script.events), 1)
+
+    def test_a_long_shoulder_outage_during_the_swing_never_releases(self):
+        script = ClassifierScript()
+        self.assertTrue(script.hold_ready())
+        for i in range(1, 7):
+            script.feed_y(READY_Y + 0.28 * i / 6)
+        for i in range(1, 10):
+            result = pose_result(right_wrist_y=DEEP_Y - 0.60 * i / 9)
+            if i >= 4:
+                result.landmarks.pop('left_shoulder', None)
+                result.landmarks.pop('right_shoulder', None)
+            script.feed(result)
+        self.assertEqual(script.events, [])
 
     def test_recovery_after_loss_allows_a_fresh_swing(self):
         script = ClassifierScript()

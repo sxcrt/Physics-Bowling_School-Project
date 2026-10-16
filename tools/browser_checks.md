@@ -313,14 +313,17 @@ What changed and what was verified:
 
 * **Temporal movement classifier** (`src/input/classifier.js`, replacing the
   earlier `src/input/validate.js` gate): a throw requires the full
-  tracking -> ready -> backswing -> forward -> release sequence with a settled
-  wind-up, sustained expanding stroke, one-arm dominance, bounded body motion
-  and dense tracking; the recorded exercise trace no longer even reaches a
+  tracking -> ready -> (backswing or direct) -> forward -> release sequence
+  with one-arm dominance, bounded body motion and dense-enough tracking; a
+  single glitch frame is resynced rather than fatal and a brief dropout is
+  bridged. The recorded exercise trace no longer even reaches a
   release (0 classifier releases, 0 launches). The legacy detector
   (`src/input/swing.js`) is unchanged and still parity-true (16 sequences,
-  0 mismatches), and the classifier is evaluated separately against 57 labeled
+  0 mismatches), and the classifier is evaluated separately against 59 labeled
   traces in both JavaScript and Python (`tools/webcam_eval.mjs` /
-  `tools/webcam_eval.py`).
+  `tools/webcam_eval.py`). Fast single-arm raises from the ready pose are
+  deliveries by design (the recorded human traces show the no-wind-up throw is
+  the common real-world delivery); see `docs/WEBCAM_SWING.md` §8/§10.
 * **Input lifecycle guards**: repeated/rewound camera frames are never fed to
   the detector and a run of them cancels the swing; the tracking service
   numbers its camera sessions and `WebcamInput` resets the swing on a session

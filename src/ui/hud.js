@@ -53,8 +53,9 @@ export function webcamFeedbackLines(status) {
       && (!hint || hint === status.tracking_reason)) {
     hint = status.tracking_reason;
   }
-  if (status.tracked && status.phase === 'ready' && (!hint || hint === 'Ready: swing your arm back, then forward and up.')) {
-    hint = 'Ready: swing your arm back, then forward and up.';
+  if (status.tracked && status.phase === 'ready'
+      && (!hint || hint === 'Ready: swing your arm forward and up to throw - a wind-up is optional.')) {
+    hint = 'Ready: swing your arm forward and up to throw - a wind-up is optional.';
   }
   if (hint) lines.push([hint, GRAY]);
   return lines;

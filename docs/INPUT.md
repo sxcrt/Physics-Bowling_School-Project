@@ -67,28 +67,36 @@ records zero speed (that was the "menu buttons do nothing" bug).
 
 ## Webcam
 
-`tracking/` captures frames and runs MediaPipe's pose landmarker; `input/swing.py`
-turns the landmark stream into a recognized swing, and `input/webcam_input.py`
-maps it onto `ThrowData`.
+`tracking/` captures frames and runs MediaPipe's pose landmarker. The shipping
+recognizer is the temporal classifier (`input/classifier.py`, ported from
+`src/input/classifier.js`), which owns the release decision;
+`input/webcam_input.py` maps its recognized `SwingEvent` onto `ThrowData`.
+The older `input/swing.py` phase machine remains the low-level motion sensor
+and parity reference.
 
-A throw needs a deliberate motion, in phases:
+A throw needs a deliberate motion:
 
 ```
-waiting -> ready -> (backswing ->) forward -> release -> follow_through
+tracking -> ready -> (backswing ->) forward -> release -> follow_through
+         -> rearm -> ready
 ```
 
-* `waiting`: no still ready pose yet (`SWING_READY_HOLD` = 0.25 s of stillness).
-* `ready`: armed; a downward hand motion starts a backswing, or a strong upward
-  stroke throws directly.
-* `forward` / `release`: the release needs a minimum rise, a minimum peak speed
-  and several frames of real upward motion, so a wave or a one-frame spike
-  cannot fire it.
-* `follow_through`: no further throw until the player returns to ready.
+* `tracking`: reliable, still tracking with both hands low; the reason the
+  ready pose is not established is shown to the player.
+* `ready`: armed; a settled down/back stroke starts a backswing, or a fast
+  forward/up stroke throws directly (the common real-world delivery with no
+  separate wind-up).
+* `forward` / `release`: the release needs a sustained rise above the stroke's
+  low point, a real peak speed and several frames of real upward motion, so a
+  wave or a one-frame spike cannot fire it; a direct delivery must rise
+  further and faster than a wind-up delivery.
+* `follow_through` / `rearm`: no further throw until the player returns to the
+  ready pose.
 
 Guards: per-joint visibility, a confidence floor, a per-frame landmark jump
-limit, a frame-timing check, and a tracking-loss grace period. Everything is
-logged to `webcam_swing.log` (phase transitions, rejected frames and every
-release).
+limit (a single glitch frame is resynced, not fatal), a brief tracking-dropout
+bridge, a frame-timing check, and one-arm dominance. Everything is logged to
+`webcam_swing.log` (phase transitions, rejected frames and every release).
 
 What the camera can and cannot measure:
 

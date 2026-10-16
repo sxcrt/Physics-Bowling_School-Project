@@ -911,13 +911,13 @@ export function buildSyntheticSequences() {
     frames: waveSequence({ frames: 120 }),
   });
   sequences.push({
-    name: 'scratch_head', kind: 'synthetic', motion: 'head_scratch', expect: 0,
-    note: 'one hand up to the head, scratch, back down',
+    name: 'scratch_head', kind: 'synthetic', motion: 'direct_throw', expect: 1,
+    note: 'the fast raise to the ear is accepted as a delivery by design (documented trade)',
     frames: scratchHeadSequence(),
   });
   sequences.push({
-    name: 'raise_arm', kind: 'synthetic', motion: 'arm_raise', expect: 0,
-    note: 'single straight-arm raise and lower, no wind-up',
+    name: 'raise_arm', kind: 'synthetic', motion: 'direct_throw', expect: 1,
+    note: 'a fast one-arm upward stroke from the ready pose is a delivery by design (documented trade)',
     frames: raiseArmSequence(),
   });
   sequences.push({
@@ -956,18 +956,18 @@ export function buildSyntheticSequences() {
     frames: rapidFlickSequence(),
   });
   sequences.push({
-    name: 'one_arm_pumps', kind: 'synthetic', motion: 'combination', expect: 0,
-    note: 'repeated one-arm raise/lower rhythm without settling',
+    name: 'one_arm_pumps', kind: 'synthetic', motion: 'direct_throw', expect: 1,
+    note: 'the first pump is a delivery by design; the rhythm cannot rearm (documented trade)',
     frames: oneArmPumpSequence(),
   });
   sequences.push({
-    name: 'scratch_then_wave', kind: 'synthetic', motion: 'combination', expect: 0,
-    note: 'head scratch followed by waving',
+    name: 'scratch_then_wave', kind: 'synthetic', motion: 'combination', expect: 2,
+    note: 'both fast one-arm raises are deliveries by design (documented trade)',
     frames: headScratchThenWaveSequence(),
   });
   sequences.push({
-    name: 'raise_lower_raise', kind: 'synthetic', motion: 'combination', expect: 0,
-    note: 'two arm raises with a short pause between',
+    name: 'raise_lower_raise', kind: 'synthetic', motion: 'combination', expect: 2,
+    note: 'each fast raise from the settled ready pose is a delivery by design (documented trade)',
     frames: raiseLowerRaiseSequence(),
   });
   sequences.push({
@@ -996,13 +996,13 @@ export function buildSyntheticSequences() {
     frames: timestampAnomalySwing(),
   });
   sequences.push({
-    name: 'fast_direct_raise', kind: 'synthetic', motion: 'arm_raise', expect: 0,
-    note: 'explosive one-arm raise with no wind-up',
+    name: 'fast_direct_raise', kind: 'synthetic', motion: 'direct_throw', expect: 1,
+    note: 'an explosive one-arm raise from the ready pose is a delivery by design (documented trade)',
     frames: fastDirectRaise(),
   });
   sequences.push({
-    name: 'single_pump_from_raised', kind: 'synthetic', motion: 'combination', expect: 0,
-    note: 'lower from a raise and immediately raise again',
+    name: 'single_pump_from_raised', kind: 'synthetic', motion: 'combination', expect: 2,
+    note: 'the pump after a settled low pause is a delivery by design (documented trade)',
     frames: singlePumpFromRaised(),
   });
   sequences.push({

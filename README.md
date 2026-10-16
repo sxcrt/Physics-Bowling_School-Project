@@ -27,7 +27,8 @@ The first click also unlocks audio (browser autoplay policy).
   across the lane, drag back and stroke forward to throw (a sideways stroke adds
   hook).
 * **Webcam**: press `TAB` to toggle webcam mode (or `1`/`2`), `C` to cycle the
-  throwing arm.
+  throwing arm. Stand with your hands low until the chip says **Ready**, then
+  swing one arm forward and up - with or without a wind-up - to roll the ball.
 * **Menus**: mouse, or arrow keys + `ENTER` (`ESC` backs out).
 * `ESC` pauses, `R` re-stands the rack before a throw, `H` shows/hides the
   physics readout, `F12` saves a screenshot.
@@ -124,7 +125,10 @@ python -m pytest tests -q
 A real human swing in front of a live camera is **not** covered by any of the
 automatic checks: the positive traces are synthetic and the recorded human
 traces are two negative motions (exercise and waving). See
-`docs/WEBCAM_MANUAL_TEST.md` for the manual validation procedure.
+`docs/WEBCAM_MANUAL_TEST.md` for the manual validation procedure, and
+`docs/WEBCAM_SWING.md` for the recognizer's design - including the one
+documented false-positive family (a fast single-arm raise from the ready pose,
+which is physically the same motion as a no-wind-up delivery).
 
 ---
 

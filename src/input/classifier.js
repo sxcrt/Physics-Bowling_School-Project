@@ -15,34 +15,43 @@
 //   tracking -> ready -> backswing -> forward -> release -> follow_through
 //            -> rearm -> ready -> ...
 //
-// A throw is only produced by a convincing sequence:
+// A throw is produced by a convincing sequence:
 //
 //   * the player is first reliably tracked, still, with both hands low (ready);
-//   * one arm then performs a sustained down/back stroke (backswing) whose
-//     depth is measured in the player's own torso heights; a hidden wrist can
-//     keep the stroke alive through the visible elbow chain, but never starts
-//     one from nothing;
-//   * the arm reverses into a sustained forward/up stroke with a real rise, a
-//     real peak speed, continuity and an acceleration that decays (release);
+//   * one arm then either performs a down/back stroke (backswing) with a real
+//     reversal, or - the common real-world delivery - rises straight from the
+//     settled ready pose ("direct"); a hidden wrist can keep a stroke alive
+//     through the visible elbow chain, but never starts one from nothing;
+//   * the forward stroke needs a sustained rise, a real peak speed and an
+//     acceleration that decays (release); a direct delivery must rise further
+//     and faster than one with a wind-up behind it;
 //   * the other arm stays quiet throughout (a symmetric two-arm raise is
 //     exercise, not bowling);
 //   * the body does not jump, crouch away or oscillate like an exercise
 //     rhythm, and the player does not turn away from the camera;
-//   * the whole stroke is recently and densely tracked, the throwing hand
-//     stays the same hand, and one accepted swing disarms the machine until
-//     the ready pose is re-established.
+//   * a single landmark glitch (a wrist flip) is absorbed by resyncing the
+//     hand position, not by aborting the throw, and a brief tracking dropout
+//     is bridged; a sustained loss still aborts, so unrelated motion on
+//     either side of an interruption can never combine into a throw;
+//   * one accepted swing disarms the machine until the ready pose is
+//     re-established.
 //
-// Features are normalized against body proportions (torso height) and elapsed
-// time, so camera distance, player size, swing speed and moderate body
-// translation do not change the decision. Every rejection carries a
-// player-readable reason; the HUD shows the current state and the most recent
-// rejection, and the developer diagnostics readout can show full telemetry.
+// Features are normalized against body proportions (torso height, or a
+// last-good torso height / shoulder-width estimate when the hips are out of
+// frame) and elapsed time, so camera distance, player size, swing speed and
+// moderate body translation do not change the decision. Every rejection
+// carries a player-readable reason; the HUD shows the current state and the
+// most recent rejection, and the developer diagnostics readout can show full
+// telemetry.
 //
 // Design note: unlike src/input/swing.js this module is *not* a parity port.
 // It is verified against labeled synthetic and recorded traces by
 // tools/webcam_eval.mjs (browser) and tools/webcam_eval.py (Python port); the
 // old detector remains exported and parity-tested as the low-level motion
-// sensor it is.
+// sensor it is. A one-arm upward stroke from the ready pose is treated as a
+// throw by design: real players deliver with and without a wind-up, and the
+// recorded human exercise traces (two-arm and high-hand motions) are still
+// rejected. See docs/WEBCAM_SWING.md.
 import * as config from '../config.js';
 import { SwingEvent } from './swing.js';
 
@@ -65,8 +74,8 @@ export const STATE_LABELS = {
 };
 
 export const STATE_HINTS = {
-  [STATE_TRACKING]: 'Stand still where the camera can see your shoulders and hips.',
-  [STATE_READY]: 'Ready: swing your arm back, then forward and up.',
+  [STATE_TRACKING]: 'Stand still where the camera can see your shoulders.',
+  [STATE_READY]: 'Ready: swing your arm forward and up to throw - a wind-up is optional.',
   [STATE_BACKSWING]: 'Now swing forward and up!',
   [STATE_FORWARD]: 'Keep going - release!',
   [STATE_RELEASE]: 'Throw released.',
@@ -78,12 +87,10 @@ const ARMS = ['right', 'left'];
 const OTHER = { right: 'left', left: 'right' };
 const WRISTS = { right: 'right_wrist', left: 'left_wrist' };
 const ELBOWS = { right: 'right_elbow', left: 'left_elbow' };
-const OWN_SHOULDER = { right: 'right_shoulder', left: 'left_shoulder' };
 const HANDS = {
   right: ['right_index', 'right_pinky', 'right_thumb'],
   left: ['left_index', 'left_pinky', 'left_thumb'],
 };
-const TORSO_POINTS = ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip'];
 const PREFERRED_ARMS = ['auto', 'left', 'right'];
 
 function clamp(v, low, high) { return Math.max(low, Math.min(high, v)); }
@@ -150,12 +157,19 @@ export class SwingClassifier {
     this._shoulder_angle = null;
     this._body_vel = { x: 0.0, y: 0.0 };
     this._torso_height = 0.0;
+    this._torso_ref = 0.0;
+    this._torso_ref_time = -Infinity;
     this._ready_hold = 0.0;
     this._ready_bad = 0.0;
     this._symmetric_frames = 0;
     this._below_band_since = { right: null, left: null };
+    this._below_band_min = { right: null, left: null };
     this._elbow_band_since = { right: null, left: null };
+    this._jump_reject = { right: null, left: null };
+    this._jump_reject_source = { right: null, left: null };
     this._swing_arm = null;
+    this._direct = false;
+    this._stroke_jumps = 0;
     this._stroke_started = 0.0;
     this._stroke_origin_height = 0.0;
     this._stroke_min_height = 0.0;
@@ -237,6 +251,7 @@ export class SwingClassifier {
       depth: this._depth(),
       rise: this._rise(),
       peak_up: this._peak_up,
+      direct: this._direct,
       confidence: last ? last.confidence : 0.0,
       hand: this._hand_source[arm] || 'wrist',
       tracking: this._tracking_reason,
@@ -269,7 +284,9 @@ export class SwingClassifier {
       return 0.35 * clamp(this._depth() / needed, 0.0, 1.0);
     }
     if (this.phase === STATE_FORWARD) {
-      const needed = Math.max(this._c('CLASSIFIER_FORWARD_MIN_RISE') * 0.9, 1e-6);
+      const needed = Math.max(
+        (this._direct ? this._c('CLASSIFIER_DIRECT_MIN_RISE')
+          : this._c('CLASSIFIER_FORWARD_MIN_RISE')) * 0.9, 1e-6);
       return clamp(0.35 + 0.65 * (this._rise() / needed), 0.0, 1.0);
     }
     return 0.0;
@@ -296,11 +313,16 @@ export class SwingClassifier {
     this._shoulder_angle = null;
     this._body_vel = { x: 0.0, y: 0.0 };
     this._torso_height = 0.0;
+    this._torso_ref = 0.0;
+    this._torso_ref_time = -Infinity;
     this._ready_hold = 0.0;
     this._ready_bad = 0.0;
     this._symmetric_frames = 0;
     this._below_band_since = { right: null, left: null };
+    this._below_band_min = { right: null, left: null };
     this._elbow_band_since = { right: null, left: null };
+    this._jump_reject = { right: null, left: null };
+    this._jump_reject_source = { right: null, left: null };
     this._clear_stroke();
     this._hand_source = { right: 'wrist', left: 'wrist' };
     this._history = [];
@@ -308,6 +330,8 @@ export class SwingClassifier {
 
   _clear_stroke() {
     this._swing_arm = null;
+    this._direct = false;
+    this._stroke_jumps = 0;
     this._stroke_started = 0.0;
     this._stroke_origin_height = 0.0;
     this._stroke_min_height = 0.0;
@@ -396,22 +420,44 @@ export class SwingClassifier {
     }
     const landmarks = result.landmarks;
     const minVisibility = this._c('CLASSIFIER_TORSO_VISIBILITY');
-    const torsoPoints = {};
-    for (const name of TORSO_POINTS) {
-      const lm = point(landmarks, name);
-      if (lm === null || lm.visibility < minVisibility) {
-        this._lost_frame('torso landmark missing');
-        return null;
-      }
-      torsoPoints[name] = lm;
+    // The shoulders are the anchor; the hips are optional. When the hips are
+    // out of frame (a close camera), the scale falls back to the last
+    // hip-to-shoulder height or, failing that, to the shoulder width - so a
+    // player who cannot fit their whole torso on screen can still bowl.
+    const ls = point(landmarks, 'left_shoulder');
+    const rs = point(landmarks, 'right_shoulder');
+    if (ls === null || rs === null || ls.visibility < minVisibility || rs.visibility < minVisibility) {
+      this._lost_frame('torso landmark missing');
+      return null;
     }
-    const ls = torsoPoints.left_shoulder; const rs = torsoPoints.right_shoulder;
-    const lh = torsoPoints.left_hip; const rh = torsoPoints.right_hip;
+    const lh = point(landmarks, 'left_hip');
+    const rh = point(landmarks, 'right_hip');
+    const hipsVisible = lh !== null && rh !== null
+      && lh.visibility >= minVisibility && rh.visibility >= minVisibility;
     const shoulderMid = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
-    const hipMid = { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2 };
-    const torsoH = hipMid.y - shoulderMid.y;
+    let hipMid = null;
+    let torsoH = 0.0;
+    if (hipsVisible) {
+      hipMid = { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2 };
+      torsoH = hipMid.y - shoulderMid.y;
+      if (torsoH >= this._c('CLASSIFIER_MIN_TORSO_HEIGHT')) {
+        this._torso_ref = torsoH;
+        this._torso_ref_time = this._time;
+      } else {
+        torsoH = 0.0;
+      }
+    }
+    if (torsoH <= 0.0) {
+      if (this._torso_ref > 0.0
+          && this._time - this._torso_ref_time <= this._c('CLASSIFIER_TORSO_REF_HOLD')) {
+        torsoH = this._torso_ref;
+      } else {
+        torsoH = Math.hypot(rs.x - ls.x, rs.y - ls.y)
+          * this._c('CLASSIFIER_SHOULDER_TORSO_RATIO');
+      }
+    }
     if (!(torsoH >= this._c('CLASSIFIER_MIN_TORSO_HEIGHT'))) {
-      this._lost_frame('move back so your hips and shoulders are visible');
+      this._lost_frame('stand where the camera can see your shoulders');
       return null;
     }
     if (this._prev_shoulder_mid !== null
@@ -420,10 +466,13 @@ export class SwingClassifier {
       this._lost_frame('torso landmark jumped');
       return null;
     }
+    const bodyX = hipsVisible
+      ? (ls.x + rs.x + lh.x + rh.x) / 4
+      : (ls.x + rs.x) / 2;
     const frame = {
       t: this._time, dt, confidence,
       torsoH, shoulderMid, hipMid,
-      bodyX: (ls.x + rs.x + lh.x + rh.x) / 4,
+      bodyX,
       shoulderAngle: Math.atan2(rs.y - ls.y, rs.x - ls.x),
       bodySpeedX: 0.0, bodySpeedY: 0.0,
       arms: { right: null, left: null },
@@ -447,7 +496,7 @@ export class SwingClassifier {
     const maxSpeed = this._c('CLASSIFIER_MAX_HAND_SPEED');
 
     for (const arm of ARMS) {
-      const shoulder = torsoPoints[OWN_SHOULDER[arm]];
+      const shoulder = arm === 'right' ? rs : ls;
       const sample = armSample(landmarks, arm, this._c('CLASSIFIER_WRIST_VISIBILITY'));
       const elbow = point(landmarks, ELBOWS[arm]);
       const elbowVisible = elbow !== null
@@ -496,31 +545,58 @@ export class SwingClassifier {
         const prevRaw = this._prev_raw[arm];
         const prevSource = this._prev_source[arm];
         let reject = false;
+        let resync = false;                    // the hand genuinely moved there
         if (prevRaw !== null && prevSource === sample.source) {
           const jump = Math.hypot(rel.x - prevRaw.x, rel.y - prevRaw.y);
           if (jump > maxJump || jump / dt > maxSpeed) {
-            reject = true;
-            this._frame_reject(`${arm} hand jumped ${jump.toFixed(2)} torso units in one frame`);
-            if (this._swing_arm === arm && this._phase_in_stroke()) {
-              this._abort('hand tracking jumped mid-swing - try again');
+            // A single-frame landmark glitch (a wrist flip) must not kill the
+            // throw: keep the last accepted sample as the baseline and check
+            // this one against the rejected position too. A frame that
+            // continues *from* the rejected position is a real fast move; a
+            // frame that returns to the accepted baseline is the flip-back.
+            const rejected = this._jump_reject[arm];
+            const rejectedSource = this._jump_reject_source[arm];
+            if (rejected !== null && rejectedSource === sample.source
+                && Math.hypot(rel.x - rejected.x, rel.y - rejected.y) <= maxJump) {
+              resync = true;
+            } else {
+              reject = true;
+              this._jump_reject[arm] = rel;
+              this._jump_reject_source[arm] = sample.source;
+              this._frame_reject(`${arm} hand jumped ${jump.toFixed(2)} torso units in one frame`);
+              this._stroke_jumps += 1;
+              if (this._swing_arm === arm && this._phase_in_stroke()
+                  && this._stroke_jumps > this._c('CLASSIFIER_STROKE_MAX_JUMPS')) {
+                this._abort('hand tracking jumped twice in one swing - try again');
+              }
             }
+          } else {
+            this._jump_reject[arm] = null;
+            this._jump_reject_source[arm] = null;
           }
         }
         if (reject) {
-          // Adopt the new position as the baseline so a genuine fast
-          // re-acquisition does not lock the arm out, but never let the
-          // rejected sample move the machine this frame.
-          this._prev_raw[arm] = rel;
-          this._prev_source[arm] = sample.source;
-          this._hand_source[arm] = sample.source;
+          // Never let a rejected sample move the machine this frame; the next
+          // reliable sample decides whether the stroke continues.
           this._smooth[arm] = null;
           this._vel[arm].x = 0.0; this._vel[arm].y = 0.0;
         } else {
-          this._prev_raw[arm] = rel;
-          this._prev_source[arm] = sample.source;
-          this._hand_source[arm] = sample.source;
-          const prev = this._smooth[arm];
-          const reset = prev === null || prevSource !== sample.source;
+          if (resync) {
+            // Continue from the new position without inventing a velocity.
+            this._prev_raw[arm] = rel;
+            this._prev_source[arm] = sample.source;
+            this._jump_reject[arm] = null;
+            this._jump_reject_source[arm] = null;
+            this._hand_source[arm] = sample.source;
+            this._smooth[arm] = { ...rel };
+            this._vel[arm].x = 0.0; this._vel[arm].y = 0.0;
+          } else {
+            this._prev_raw[arm] = rel;
+            this._prev_source[arm] = sample.source;
+            this._hand_source[arm] = sample.source;
+          }
+          const prev = resync ? null : this._smooth[arm];
+          const reset = resync || prev === null || prevSource !== sample.source;
           let smoothed;
           let rawVelX = 0.0; let rawVelY = 0.0;
           if (reset) {
@@ -551,6 +627,8 @@ export class SwingClassifier {
       } else {
         this._prev_raw[arm] = null;
         this._prev_source[arm] = null;
+        this._jump_reject[arm] = null;
+        this._jump_reject_source[arm] = null;
         this._smooth[arm] = null;
         this._vel[arm].x *= (1 - velSmoothing);
         this._vel[arm].y *= (1 - velSmoothing);
@@ -567,11 +645,19 @@ export class SwingClassifier {
       // low (the ready pose) for a moment. This is what separates a deliberate
       // wind-up from the return stroke of an arm raise/pump: in the pump the
       // hand was above the band moments before, so the descent cannot start a
-      // stroke and the machine never leaves ready.
+      // stroke and the machine never leaves ready. The deepest point of the
+      // low stretch is kept too, so a delivery that starts straight from the
+      // ready pose measures its rise from the true bottom of the swing.
       if (accepted.present && accepted.height <= this._c('CLASSIFIER_READY_HAND_BELOW')) {
-        if (this._below_band_since[arm] === null) this._below_band_since[arm] = this._time;
+        if (this._below_band_since[arm] === null) {
+          this._below_band_since[arm] = this._time;
+          this._below_band_min[arm] = accepted.height;
+        } else {
+          this._below_band_min[arm] = Math.min(this._below_band_min[arm], accepted.height);
+        }
       } else if (accepted.present) {
         this._below_band_since[arm] = null;
+        this._below_band_min[arm] = null;
       }
       if (accepted.elbowHeight !== null
           && accepted.elbowHeight <= this._c('CLASSIFIER_READY_HAND_BELOW') + this._c('CLASSIFIER_ELBOW_BAND_MARGIN')) {
@@ -709,7 +795,9 @@ export class SwingClassifier {
       this._ready_bad = 0.0;
     }
     const start = this._backswing_start(frame);
-    if (start !== null) this._begin_backswing(start);
+    if (start !== null) { this._begin_backswing(start); return null; }
+    const direct = this._direct_throw_start(frame);
+    if (direct !== null) this._begin_direct(direct);
     return null;
   }
 
@@ -752,6 +840,44 @@ export class SwingClassifier {
     return candidates[0];
   }
 
+  // A delivery that starts straight from the ready pose, with no separate
+  // wind-up: the hand (low and settled) begins rising and keeps rising. Real
+  // players bowl this way often - standing at the line, arm hanging, one
+  // continuous forward/up swing - and the previous "wind-up or nothing"
+  // requirement missed exactly those throws. The bar for the rise itself is
+  // higher than for a wind-up delivery (a longer rise and a faster peak), and
+  // everything else - one arm, still body, no crouch, no turn - still applies.
+  _direct_throw_start(frame) {
+    const settle = this._c('CLASSIFIER_BACK_SETTLE_TIME');
+    const candidates = [];
+    for (const arm of this._candidate_arms()) {
+      const a = frame.arms[arm];
+      if (!a.present || a.height === null) continue;
+      if (a.up < this._c('CLASSIFIER_DIRECT_START_SPEED')) continue;
+      const band = this._c('CLASSIFIER_READY_HAND_BELOW') + this._c('CLASSIFIER_BACK_BAND_MARGIN');
+      if (a.height > band) continue;
+      const lowSince = this._below_band_since[arm];
+      if (lowSince === null || frame.t - lowSince < settle) continue;
+      const low = this._below_band_min[arm] === null ? a.height : this._below_band_min[arm];
+      candidates.push({ arm, height: a.height, low, speed: a.up });
+    }
+    if (!candidates.length) return null;
+    if (candidates.length === 2) {
+      const slower = Math.min(candidates[0].speed, candidates[1].speed);
+      const faster = Math.max(candidates[0].speed, candidates[1].speed);
+      if (faster > 1e-6 && slower / faster > this._c('CLASSIFIER_SYMMETRY_START_RATIO')) {
+        this._symmetric_frames += 1;
+        if (this._symmetric_frames === this._c('CLASSIFIER_SYMMETRY_FRAMES') + 1) {
+          this._set_notice('both arms are moving together - throw with one arm');
+        }
+        return null;
+      }
+    }
+    this._symmetric_frames = 0;
+    candidates.sort((a, b) => b.speed - a.speed);
+    return candidates[0];
+  }
+
   _begin_backswing(start) {
     this._clear_stroke();
     this.phase = STATE_BACKSWING;
@@ -771,6 +897,35 @@ export class SwingClassifier {
     this._stroke_angle_delta = 0.0;
   }
 
+  _begin_direct(start) {
+    this._clear_stroke();
+    this.phase = STATE_FORWARD;
+    this._phase_started = this._time;
+    this._stroke_started = this._time;
+    this._forward_started = this._time;
+    this._swing_arm = start.arm;
+    this._direct = true;
+    this._occluded_backswing = false;
+    // The rise is measured from the deepest point of the settled low pose,
+    // not from the frame the detector happened to notice it moving.
+    this._stroke_origin_height = start.low;
+    this._stroke_min_height = Math.min(start.low, start.height);
+    if (this._prev_shoulder_mid !== null) {
+      this._stroke_body_min = this._prev_shoulder_mid.y;
+      this._stroke_body_max = this._prev_shoulder_mid.y;
+    }
+    this._stroke_torso_min = this._torso_height;
+    this._stroke_torso_max = this._torso_height;
+    this._stroke_angle_ref = this._shoulder_angle || 0.0;
+    this._stroke_angle_delta = 0.0;
+    this._peak_up = 0.0;
+    this._rising_frames = 0;
+    this._rising_run = 0;
+    this._max_rising_run = 0;
+    this._reversals = 0;
+    this._last_direction = 0;
+  }
+
   _state_backswing(frame, dt) {
     const arm = this._swing_arm;
     const a = frame.arms[arm];
@@ -784,6 +939,16 @@ export class SwingClassifier {
         && elapsed >= this._c('CLASSIFIER_BACK_MIN_TIME')
         && upSpeed >= reversal && (a.present || this._occluded_backswing)) {
       this._begin_forward();
+      return null;
+    }
+    // The stroke reversed before it ever deepened (a shallow wind-up, or a
+    // delivery started while the hand happened to be drifting down). Hand the
+    // rise back to the ready state, which picks it up as a direct delivery
+    // with the correct low origin.
+    if (elapsed >= this._c('CLASSIFIER_BACK_MIN_TIME')
+        && depth < this._c('CLASSIFIER_BACK_MIN_DEPTH')
+        && upSpeed >= reversal && a.present) {
+      this._to_ready(null);
       return null;
     }
     // The hand returned to the ready band without a real stroke.
@@ -833,8 +998,9 @@ export class SwingClassifier {
       } else {
         this._rising_run = 0;
       }
-    } else if (!this._occluded_backswing && elapsed > this._c('CLASSIFIER_HAND_LOSS_GRACE')) {
-      // The throwing hand vanished mid-delivery without a tracked occlusion.
+    } else if (!this._occluded_backswing && a.elbowRel === null
+        && elapsed > this._c('CLASSIFIER_HAND_LOSS_GRACE')) {
+      // The whole throwing arm vanished mid-delivery (no wrist, no elbow).
       this._blocked('the throwing hand disappeared mid-swing - try again');
       return null;
     }
@@ -864,17 +1030,25 @@ export class SwingClassifier {
     const rise = this._rise();
     const depth = this._depth();
     const peak = this._peak_up;
+    // A delivery started straight from the ready pose ("direct") must rise
+    // further and faster than one that had a real wind-up behind it; that is
+    // what keeps a casual arm raise from bowling while a genuine forward
+    // throw - the common real-world case - still releases.
+    const minRise = this._direct
+      ? this._c('CLASSIFIER_DIRECT_MIN_RISE') : this._c('CLASSIFIER_FORWARD_MIN_RISE');
+    const minPeak = this._direct
+      ? this._c('CLASSIFIER_DIRECT_MIN_PEAK') : this._c('CLASSIFIER_FORWARD_MIN_PEAK');
     if (elapsed < this._c('CLASSIFIER_FORWARD_MIN_TIME')) return {};
     if (this._max_rising_run < this._c('CLASSIFIER_FORWARD_MIN_RISING_RUN')) return {};
-    if (rise < this._c('CLASSIFIER_FORWARD_MIN_RISE')) return {};
-    if (peak < this._c('CLASSIFIER_FORWARD_MIN_PEAK')) return {};
+    if (rise < minRise) return {};
+    if (peak < minPeak) return {};
     const crossed = a.height >= this._c('CLASSIFIER_RELEASE_HAND_HEIGHT')
       && up >= this._c('CLASSIFIER_RELEASE_UP_SPEED');
-    const peaked = up < Math.max(this._c('CLASSIFIER_FORWARD_MIN_PEAK') * 0.5, peak * 0.5);
+    const peaked = up < Math.max(minPeak * 0.5, peak * 0.5);
     if (!crossed && !peaked) return {};
 
     // ---- definitive gate region: every failure now blocks the throw.
-    if (depth < this._c('CLASSIFIER_BACK_MIN_DEPTH') && !this._occluded_backswing) {
+    if (!this._direct && depth < this._c('CLASSIFIER_BACK_MIN_DEPTH') && !this._occluded_backswing) {
       return { block: 'no backswing - swing your arm back, then forward' };
     }
     const other = OTHER[arm];

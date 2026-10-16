@@ -44,9 +44,12 @@ with a real person and a real camera, and report what you observe (see the
   wind-up), then forward and up in one continuous stroke - the same gesture
   the mouse drag simulates. The chip shows `Backswing` then `Forward swing`,
   and exactly one ball launches. The power meter fills during the stroke.
+* A wind-up is optional: a direct forward/up swing from the ready pose (arm
+  hanging, no separate backswing) must also launch exactly one ball - that is
+  the common real-world delivery and the classifier accepts it directly.
 * Repeat ten times with deliberate variation:
   * fast and slow deliveries;
-  * shallow and deep backswings;
+  * shallow and deep backswings, and no backswing at all;
   * standing closer and farther from the camera;
   * left arm (press `C` to select it) as well as right;
   * let the non-throwing arm drift a little - it must not block the throw;
@@ -62,13 +65,20 @@ balls launch:
 
 * jumping jacks and burpees;
 * waving with one hand at chest/head height;
-* scratching your head; raising one arm straight up;
 * a two-arm overhead stretch;
 * walking across the frame; stepping side to side; leaning; twisting your
   torso;
 * random arm fidgeting; rapid small flicks;
-* repeated one-arm pumps (raise/lower without settling);
-* raising, lowering and raising an arm again quickly.
+* repeated one-arm pumps that never settle low between strokes;
+* a *slow* single-arm raise to chest height.
+
+**Expected trade-off:** a *fast* single-arm raise from the ready pose (a brisk
+scratch, a vigorous one-arm stretch) is geometrically identical to a no-wind-up
+delivery at the release moment and may launch a ball by design - the same
+motion is a real delivery when a player means it. That single accepted case is
+documented in `docs/WEBCAM_SWING.md` §8/§10 and is the only known
+false-positive family; it must still be exactly one ball per raise, and every
+two-arm motion must stay rejected.
 
 Occasionally the HUD may show a rejection notice (for example "both arms moved
 together - throw with one arm"). That is the expected feedback, not a throw.

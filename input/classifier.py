@@ -10,29 +10,39 @@ classifier requires the whole movement sequence instead:
     tracking -> ready -> backswing -> forward -> release -> follow_through
              -> rearm -> ready -> ...
 
-A throw is only produced by a convincing sequence:
+A throw is produced by a convincing sequence:
 
 * the player is first reliably tracked, still, with both hands low (ready);
-* one arm then performs a sustained down/back stroke (backswing) whose depth
-  is measured in the player's own torso heights; a hidden wrist can keep the
-  stroke alive through the visible elbow chain, but never starts one;
-* the arm reverses into a sustained forward/up stroke with a real rise, a real
-  peak speed, continuity and an acceleration that decays (release);
+* one arm then either performs a down/back stroke (backswing) with a real
+  reversal, or - the common real-world delivery - rises straight from the
+  settled ready pose ("direct"); a hidden wrist can keep a stroke alive
+  through the visible elbow chain, but never starts one from nothing;
+* the forward stroke needs a sustained rise, a real peak speed and an
+  acceleration that decays (release); a direct delivery must rise further and
+  faster than one with a wind-up behind it;
 * the other arm stays quiet throughout (a symmetric two-arm raise is exercise,
   not bowling);
 * the body does not jump, collapse or turn away like an exercise movement;
-* the whole stroke is recently and densely tracked, the throwing hand stays
-  the same hand, and one accepted swing disarms the machine until the ready
-  pose is re-established.
+* a single landmark glitch (a wrist flip) is absorbed by resyncing the hand
+  position instead of aborting, and a brief tracking dropout is bridged; a
+  sustained loss still aborts, so unrelated motion on either side of an
+  interruption can never combine into a throw;
+* one accepted swing disarms the machine until the ready pose is
+  re-established.
 
-Features are normalized against the player's torso height and elapsed time,
-so camera distance, player size, swing speed and moderate body translation do
-not change the decision. Every rejection carries a player-readable reason.
+Features are normalized against body proportions (torso height, or a
+last-good torso height / shoulder-width estimate when the hips are out of
+frame) and elapsed time, so camera distance, player size, swing speed and
+moderate body translation do not change the decision. Every rejection carries
+a player-readable reason.
 
 Both implementations are checked against the same labeled evaluation traces
 (``tools/webcam_eval.mjs`` exports them; ``tools/webcam_eval.py`` replays them
 through this module), so agreement between the ports is never mistaken for
-behavioural correctness.
+behavioural correctness. A one-arm upward stroke from the ready pose is
+treated as a throw by design: real players deliver with and without a
+wind-up, and the recorded human exercise traces (two-arm and high-hand
+motions) are still rejected. See ``docs/WEBCAM_SWING.md``.
 """
 import math
 
@@ -58,8 +68,8 @@ STATE_LABELS = {
 }
 
 STATE_HINTS = {
-    STATE_TRACKING: 'Stand still where the camera can see your shoulders and hips.',
-    STATE_READY: 'Ready: swing your arm back, then forward and up.',
+    STATE_TRACKING: 'Stand still where the camera can see your shoulders.',
+    STATE_READY: 'Ready: swing your arm forward and up to throw - a wind-up is optional.',
     STATE_BACKSWING: 'Now swing forward and up!',
     STATE_FORWARD: 'Keep going - release!',
     STATE_RELEASE: 'Throw released.',
@@ -71,12 +81,10 @@ _ARMS = ('right', 'left')
 _OTHER = {'right': 'left', 'left': 'right'}
 _WRISTS = {'right': 'right_wrist', 'left': 'left_wrist'}
 _ELBOWS = {'right': 'right_elbow', 'left': 'left_elbow'}
-_OWN_SHOULDER = {'right': 'right_shoulder', 'left': 'left_shoulder'}
 _HANDS = {
     'right': ('right_index', 'right_pinky', 'right_thumb'),
     'left': ('left_index', 'left_pinky', 'left_thumb'),
 }
-_TORSO_POINTS = ('left_shoulder', 'right_shoulder', 'left_hip', 'right_hip')
 _PREFERRED_ARMS = ('auto', 'left', 'right')
 
 
@@ -162,12 +170,19 @@ class SwingClassifier:
         self._shoulder_angle = None
         self._body_vel = {'x': 0.0, 'y': 0.0}
         self._torso_height = 0.0
+        self._torso_ref = 0.0
+        self._torso_ref_time = -float('inf')
         self._ready_hold = 0.0
         self._ready_bad = 0.0
         self._symmetric_frames = 0
         self._below_band_since = {'right': None, 'left': None}
+        self._below_band_min = {'right': None, 'left': None}
         self._elbow_band_since = {'right': None, 'left': None}
+        self._jump_reject = {'right': None, 'left': None}
+        self._jump_reject_source = {'right': None, 'left': None}
         self._swing_arm = None
+        self._direct = False
+        self._stroke_jumps = 0
         self._stroke_started = 0.0
         self._stroke_origin_height = 0.0
         self._stroke_min_height = 0.0
@@ -259,6 +274,7 @@ class SwingClassifier:
             'depth': self._depth(),
             'rise': self._rise(),
             'peak_up': self._peak_up,
+            'direct': self._direct,
             'confidence': 0.0 if last is None else last['confidence'],
             'hand': self._hand_source.get(arm, 'wrist'),
             'tracking': self._tracking_reason,
@@ -291,7 +307,8 @@ class SwingClassifier:
             needed = max(self._c('CLASSIFIER_BACK_MIN_DEPTH'), 1e-6)
             return 0.35 * _clamp(self._depth() / needed, 0.0, 1.0)
         if self.phase == STATE_FORWARD:
-            needed = max(self._c('CLASSIFIER_FORWARD_MIN_RISE') * 0.9, 1e-6)
+            needed = max((self._c('CLASSIFIER_DIRECT_MIN_RISE') if self._direct
+                          else self._c('CLASSIFIER_FORWARD_MIN_RISE')) * 0.9, 1e-6)
             return _clamp(0.35 + 0.65 * (self._rise() / needed), 0.0, 1.0)
         return 0.0
 
@@ -317,17 +334,24 @@ class SwingClassifier:
         self._shoulder_angle = None
         self._body_vel = {'x': 0.0, 'y': 0.0}
         self._torso_height = 0.0
+        self._torso_ref = 0.0
+        self._torso_ref_time = -float('inf')
         self._ready_hold = 0.0
         self._ready_bad = 0.0
         self._symmetric_frames = 0
         self._below_band_since = {'right': None, 'left': None}
+        self._below_band_min = {'right': None, 'left': None}
         self._elbow_band_since = {'right': None, 'left': None}
+        self._jump_reject = {'right': None, 'left': None}
+        self._jump_reject_source = {'right': None, 'left': None}
         self._clear_stroke()
         self._hand_source = {'right': 'wrist', 'left': 'wrist'}
         self._history = []
 
     def _clear_stroke(self):
         self._swing_arm = None
+        self._direct = False
+        self._stroke_jumps = 0
         self._stroke_started = 0.0
         self._stroke_origin_height = 0.0
         self._stroke_min_height = 0.0
@@ -412,22 +436,41 @@ class SwingClassifier:
             return None
         landmarks = result.landmarks
         min_visibility = self._c('CLASSIFIER_TORSO_VISIBILITY')
-        torso_points = {}
-        for name in _TORSO_POINTS:
-            lm = _point(landmarks, name)
-            if lm is None or lm['visibility'] < min_visibility:
-                self._lost_frame('torso landmark missing')
-                return None
-            torso_points[name] = lm
-        ls = torso_points['left_shoulder']
-        rs = torso_points['right_shoulder']
-        lh = torso_points['left_hip']
-        rh = torso_points['right_hip']
+        # The shoulders are the anchor; the hips are optional. When the hips
+        # are out of frame (a close camera), the scale falls back to the last
+        # hip-to-shoulder height or, failing that, to the shoulder width - so a
+        # player who cannot fit their whole torso on screen can still bowl.
+        ls = _point(landmarks, 'left_shoulder')
+        rs = _point(landmarks, 'right_shoulder')
+        if (ls is None or rs is None
+                or ls['visibility'] < min_visibility or rs['visibility'] < min_visibility):
+            self._lost_frame('torso landmark missing')
+            return None
+        lh = _point(landmarks, 'left_hip')
+        rh = _point(landmarks, 'right_hip')
+        hips_visible = (lh is not None and rh is not None
+                        and lh['visibility'] >= min_visibility
+                        and rh['visibility'] >= min_visibility)
         shoulder_mid = {'x': (ls['x'] + rs['x']) / 2.0, 'y': (ls['y'] + rs['y']) / 2.0}
-        hip_mid = {'x': (lh['x'] + rh['x']) / 2.0, 'y': (lh['y'] + rh['y']) / 2.0}
-        torso_h = hip_mid['y'] - shoulder_mid['y']
+        hip_mid = None
+        torso_h = 0.0
+        if hips_visible:
+            hip_mid = {'x': (lh['x'] + rh['x']) / 2.0, 'y': (lh['y'] + rh['y']) / 2.0}
+            torso_h = hip_mid['y'] - shoulder_mid['y']
+            if torso_h >= self._c('CLASSIFIER_MIN_TORSO_HEIGHT'):
+                self._torso_ref = torso_h
+                self._torso_ref_time = self._time
+            else:
+                torso_h = 0.0
+        if torso_h <= 0.0:
+            if (self._torso_ref > 0.0
+                    and self._time - self._torso_ref_time <= self._c('CLASSIFIER_TORSO_REF_HOLD')):
+                torso_h = self._torso_ref
+            else:
+                torso_h = (math.hypot(rs['x'] - ls['x'], rs['y'] - ls['y'])
+                           * self._c('CLASSIFIER_SHOULDER_TORSO_RATIO'))
         if not torso_h >= self._c('CLASSIFIER_MIN_TORSO_HEIGHT'):
-            self._lost_frame('move back so your hips and shoulders are visible')
+            self._lost_frame('stand where the camera can see your shoulders')
             return None
         if (self._prev_shoulder_mid is not None
                 and math.hypot(shoulder_mid['x'] - self._prev_shoulder_mid['x'],
@@ -435,10 +478,12 @@ class SwingClassifier:
                 > self._c('CLASSIFIER_MAX_TORSO_JUMP')):
             self._lost_frame('torso landmark jumped')
             return None
+        body_x = ((ls['x'] + rs['x'] + lh['x'] + rh['x']) / 4.0
+                  if hips_visible else (ls['x'] + rs['x']) / 2.0)
         frame = {
             't': self._time, 'dt': dt, 'confidence': confidence,
             'torsoH': torso_h, 'shoulderMid': shoulder_mid, 'hipMid': hip_mid,
-            'bodyX': (ls['x'] + rs['x'] + lh['x'] + rh['x']) / 4.0,
+            'bodyX': body_x,
             'shoulderAngle': math.atan2(rs['y'] - ls['y'], rs['x'] - ls['x']),
             'bodySpeedX': 0.0, 'bodySpeedY': 0.0,
             'arms': {'right': None, 'left': None},
@@ -461,7 +506,7 @@ class SwingClassifier:
         max_speed = self._c('CLASSIFIER_MAX_HAND_SPEED')
 
         for arm in _ARMS:
-            shoulder = torso_points[_OWN_SHOULDER[arm]]
+            shoulder = rs if arm == 'right' else ls
             sample = _arm_sample(landmarks, arm, self._c('CLASSIFIER_WRIST_VISIBILITY'))
             elbow = _point(landmarks, _ELBOWS[arm])
             elbow_visible = elbow is not None and elbow['visibility'] >= self._c('CLASSIFIER_TORSO_VISIBILITY')
@@ -510,30 +555,61 @@ class SwingClassifier:
                 prev_raw = self._prev_raw[arm]
                 prev_source = self._prev_source[arm]
                 reject = False
+                resync = False                 # the hand genuinely moved there
                 if prev_raw is not None and prev_source == sample['source']:
                     jump = math.hypot(rel['x'] - prev_raw['x'], rel['y'] - prev_raw['y'])
                     if jump > max_jump or jump / dt > max_speed:
-                        reject = True
-                        self._frame_reject(
-                            f'{arm} hand jumped {jump:.2f} torso units in one frame')
-                        if self._swing_arm == arm and self._phase_in_stroke():
-                            self._abort('hand tracking jumped mid-swing - try again')
+                        # A single-frame landmark glitch (a wrist flip) must not
+                        # kill the throw: keep the last accepted sample as the
+                        # baseline and check this one against the rejected
+                        # position too. A frame that continues *from* the
+                        # rejected position is a real fast move; a frame that
+                        # returns to the accepted baseline is the flip-back.
+                        rejected = self._jump_reject[arm]
+                        rejected_source = self._jump_reject_source[arm]
+                        if (rejected is not None and rejected_source == sample['source']
+                                and math.hypot(rel['x'] - rejected['x'],
+                                               rel['y'] - rejected['y']) <= max_jump):
+                            resync = True
+                        else:
+                            reject = True
+                            self._jump_reject[arm] = rel
+                            self._jump_reject_source[arm] = sample['source']
+                            self._frame_reject(
+                                f'{arm} hand jumped {jump:.2f} torso units in one frame')
+                            self._stroke_jumps += 1
+                            if (self._swing_arm == arm and self._phase_in_stroke()
+                                    and self._stroke_jumps
+                                    > self._c('CLASSIFIER_STROKE_MAX_JUMPS')):
+                                self._abort('hand tracking jumped twice in one swing - try again')
+                    else:
+                        self._jump_reject[arm] = None
+                        self._jump_reject_source[arm] = None
                 if reject:
-                    # Adopt the new position as the baseline so a genuine fast
-                    # re-acquisition does not lock the arm out, but never let
-                    # the rejected sample move the machine this frame.
-                    self._prev_raw[arm] = rel
-                    self._prev_source[arm] = sample['source']
-                    self._hand_source[arm] = sample['source']
+                    # Never let a rejected sample move the machine this frame;
+                    # the next reliable sample decides whether the stroke
+                    # continues.
                     self._smooth[arm] = None
                     self._vel[arm]['x'] = 0.0
                     self._vel[arm]['y'] = 0.0
                 else:
-                    self._prev_raw[arm] = rel
-                    self._prev_source[arm] = sample['source']
-                    self._hand_source[arm] = sample['source']
-                    prev = self._smooth[arm]
-                    reset = prev is None or prev_source != sample['source']
+                    if resync:
+                        # Continue from the new position without inventing a
+                        # velocity.
+                        self._prev_raw[arm] = rel
+                        self._prev_source[arm] = sample['source']
+                        self._jump_reject[arm] = None
+                        self._jump_reject_source[arm] = None
+                        self._hand_source[arm] = sample['source']
+                        self._smooth[arm] = dict(rel)
+                        self._vel[arm]['x'] = 0.0
+                        self._vel[arm]['y'] = 0.0
+                    else:
+                        self._prev_raw[arm] = rel
+                        self._prev_source[arm] = sample['source']
+                        self._hand_source[arm] = sample['source']
+                    prev = None if resync else self._smooth[arm]
+                    reset = resync or prev is None or prev_source != sample['source']
                     if reset:
                         smoothed = dict(rel)
                         raw_vel_x = 0.0
@@ -568,6 +644,8 @@ class SwingClassifier:
             else:
                 self._prev_raw[arm] = None
                 self._prev_source[arm] = None
+                self._jump_reject[arm] = None
+                self._jump_reject_source[arm] = None
                 self._smooth[arm] = None
                 self._vel[arm]['x'] *= (1 - vel_smoothing)
                 self._vel[arm]['y'] *= (1 - vel_smoothing)
@@ -581,12 +659,19 @@ class SwingClassifier:
             frame['arms'][arm] = accepted
             # Band membership: a backswing may only start after the hand has
             # been low (the ready pose) for a moment; the return stroke of an
-            # arm raise or pump cannot start a stroke.
+            # arm raise or pump cannot start a stroke. The deepest point of the
+            # low stretch is kept too, so a delivery that starts straight from
+            # the ready pose measures its rise from the true bottom.
             if accepted['present'] and accepted['height'] <= self._c('CLASSIFIER_READY_HAND_BELOW'):
                 if self._below_band_since[arm] is None:
                     self._below_band_since[arm] = self._time
+                    self._below_band_min[arm] = accepted['height']
+                else:
+                    self._below_band_min[arm] = min(self._below_band_min[arm],
+                                                    accepted['height'])
             elif accepted['present']:
                 self._below_band_since[arm] = None
+                self._below_band_min[arm] = None
             if (accepted['elbowHeight'] is not None
                     and accepted['elbowHeight'] <= self._c('CLASSIFIER_READY_HAND_BELOW')
                     + self._c('CLASSIFIER_ELBOW_BAND_MARGIN')):
@@ -720,6 +805,10 @@ class SwingClassifier:
         start = self._backswing_start(frame)
         if start is not None:
             self._begin_backswing(start)
+            return None
+        direct = self._direct_throw_start(frame)
+        if direct is not None:
+            self._begin_direct(direct)
         return None
 
     def _backswing_start(self, frame):
@@ -764,6 +853,49 @@ class SwingClassifier:
         candidates.sort(key=lambda c: c['speed'], reverse=True)
         return candidates[0]
 
+    def _direct_throw_start(self, frame):
+        """A delivery that starts straight from the ready pose, no wind-up.
+
+        Real players bowl this way often - arm hanging, one continuous
+        forward/up swing - and the previous "wind-up or nothing" requirement
+        missed exactly those throws. The bar for the rise itself is higher
+        than for a wind-up delivery (a longer rise and a faster peak), and
+        everything else - one arm, still body, no crouch, no turn - still
+        applies.
+        """
+        settle = self._c('CLASSIFIER_BACK_SETTLE_TIME')
+        candidates = []
+        for arm in self._candidate_arms():
+            a = frame['arms'][arm]
+            if not a['present'] or a['height'] is None:
+                continue
+            if a['up'] < self._c('CLASSIFIER_DIRECT_START_SPEED'):
+                continue
+            band = (self._c('CLASSIFIER_READY_HAND_BELOW')
+                    + self._c('CLASSIFIER_BACK_BAND_MARGIN'))
+            if a['height'] > band:
+                continue
+            low_since = self._below_band_since[arm]
+            if low_since is None or frame['t'] - low_since < settle:
+                continue
+            low = (a['height'] if self._below_band_min[arm] is None
+                   else self._below_band_min[arm])
+            candidates.append({'arm': arm, 'height': a['height'],
+                               'low': low, 'speed': a['up']})
+        if not candidates:
+            return None
+        if len(candidates) == 2:
+            slower = min(candidates[0]['speed'], candidates[1]['speed'])
+            faster = max(candidates[0]['speed'], candidates[1]['speed'])
+            if faster > 1e-6 and slower / faster > self._c('CLASSIFIER_SYMMETRY_START_RATIO'):
+                self._symmetric_frames += 1
+                if self._symmetric_frames == self._c('CLASSIFIER_SYMMETRY_FRAMES') + 1:
+                    self._set_notice('both arms are moving together - throw with one arm')
+                return None
+        self._symmetric_frames = 0
+        candidates.sort(key=lambda c: c['speed'], reverse=True)
+        return candidates[0]
+
     def _begin_backswing(self, start):
         self._clear_stroke()
         self.phase = STATE_BACKSWING
@@ -781,6 +913,33 @@ class SwingClassifier:
         self._stroke_angle_ref = self._shoulder_angle or 0.0
         self._stroke_angle_delta = 0.0
 
+    def _begin_direct(self, start):
+        self._clear_stroke()
+        self.phase = STATE_FORWARD
+        self._phase_started = self._time
+        self._stroke_started = self._time
+        self._forward_started = self._time
+        self._swing_arm = start['arm']
+        self._direct = True
+        self._occluded_backswing = False
+        # The rise is measured from the deepest point of the settled low pose,
+        # not from the frame the detector happened to notice it moving.
+        self._stroke_origin_height = start['low']
+        self._stroke_min_height = min(start['low'], start['height'])
+        if self._prev_shoulder_mid is not None:
+            self._stroke_body_min = self._prev_shoulder_mid['y']
+            self._stroke_body_max = self._prev_shoulder_mid['y']
+        self._stroke_torso_min = self._torso_height
+        self._stroke_torso_max = self._torso_height
+        self._stroke_angle_ref = self._shoulder_angle or 0.0
+        self._stroke_angle_delta = 0.0
+        self._peak_up = 0.0
+        self._rising_frames = 0
+        self._rising_run = 0
+        self._max_rising_run = 0
+        self._reversals = 0
+        self._last_direction = 0
+
     def _state_backswing(self, frame, dt):
         arm = self._swing_arm
         a = frame['arms'][arm]
@@ -797,6 +956,16 @@ class SwingClassifier:
                 and up_speed >= self._c('CLASSIFIER_BACK_REVERSAL_SPEED')
                 and (a['present'] or self._occluded_backswing)):
             self._begin_forward()
+            return None
+        # The stroke reversed before it ever deepened (a shallow wind-up, or a
+        # delivery started while the hand happened to be drifting down). Hand
+        # the rise back to the ready state, which picks it up as a direct
+        # delivery with the correct low origin.
+        if (elapsed >= self._c('CLASSIFIER_BACK_MIN_TIME')
+                and depth < self._c('CLASSIFIER_BACK_MIN_DEPTH')
+                and up_speed >= self._c('CLASSIFIER_BACK_REVERSAL_SPEED')
+                and a['present']):
+            self._to_ready(None)
             return None
         # The hand returned to the ready band without a real stroke.
         if (a['present'] and elapsed > self._c('CLASSIFIER_BACK_MIN_TIME')
@@ -842,7 +1011,9 @@ class SwingClassifier:
                 self._last_direction = -1
             else:
                 self._rising_run = 0
-        elif not self._occluded_backswing and elapsed > self._c('CLASSIFIER_HAND_LOSS_GRACE'):
+        elif (not self._occluded_backswing and a['elbowRel'] is None
+              and elapsed > self._c('CLASSIFIER_HAND_LOSS_GRACE')):
+            # The whole throwing arm vanished mid-delivery (no wrist, no elbow).
             self._blocked('the throwing hand disappeared mid-swing - try again')
             return None
         ready = self._release_ready(frame, elapsed)
@@ -865,22 +1036,31 @@ class SwingClassifier:
         rise = self._rise()
         depth = self._depth()
         peak = self._peak_up
+        # A delivery started straight from the ready pose ("direct") must rise
+        # further and faster than one that had a real wind-up behind it; that
+        # is what keeps a casual arm raise from bowling while a genuine
+        # forward throw - the common real-world case - still releases.
+        min_rise = (self._c('CLASSIFIER_DIRECT_MIN_RISE') if self._direct
+                    else self._c('CLASSIFIER_FORWARD_MIN_RISE'))
+        min_peak = (self._c('CLASSIFIER_DIRECT_MIN_PEAK') if self._direct
+                    else self._c('CLASSIFIER_FORWARD_MIN_PEAK'))
         if elapsed < self._c('CLASSIFIER_FORWARD_MIN_TIME'):
             return {}
         if self._max_rising_run < self._c('CLASSIFIER_FORWARD_MIN_RISING_RUN'):
             return {}
-        if rise < self._c('CLASSIFIER_FORWARD_MIN_RISE'):
+        if rise < min_rise:
             return {}
-        if peak < self._c('CLASSIFIER_FORWARD_MIN_PEAK'):
+        if peak < min_peak:
             return {}
         crossed = (a['height'] >= self._c('CLASSIFIER_RELEASE_HAND_HEIGHT')
                    and up >= self._c('CLASSIFIER_RELEASE_UP_SPEED'))
-        peaked = up < max(self._c('CLASSIFIER_FORWARD_MIN_PEAK') * 0.5, peak * 0.5)
+        peaked = up < max(min_peak * 0.5, peak * 0.5)
         if not crossed and not peaked:
             return {}
 
         # ---- definitive gate region: every failure now blocks the throw.
-        if depth < self._c('CLASSIFIER_BACK_MIN_DEPTH') and not self._occluded_backswing:
+        if (not self._direct and depth < self._c('CLASSIFIER_BACK_MIN_DEPTH')
+                and not self._occluded_backswing):
             return {'block': 'no backswing - swing your arm back, then forward'}
         other = _OTHER[arm]
         other_peak = self._peak_speed[other]
