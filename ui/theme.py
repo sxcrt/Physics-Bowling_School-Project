@@ -833,7 +833,9 @@ class Stepper(Entity):
     label at 13px - never between rows. Two chevrons are drawn beside the
     value - the left one steps down, the right one steps up - and clicking
     anywhere else on the row steps up, so mouse and keyboard paths keep
-    working.
+    working. Passing ``on_value_click`` turns the number itself into an
+    editable field: the Lab uses it for typed launch values, while every
+    other stepper keeps the click-to-step behaviour.
     """
 
     RADIUS = SIZES['settings_row_radius']
@@ -846,7 +848,7 @@ class Stepper(Entity):
 
     def __init__(self, parent, caption, value_text, position=(0, 0),
                  scale=(0.42, 0.058), on_step=None, accent=None, helper='',
-                 value_colour=None):
+                 value_colour=None, on_value_click=None):
         super().__init__(parent=parent, position=(position[0], position[1], 0))
         self.caption = caption
         self.helper = str(helper or '')
@@ -855,6 +857,10 @@ class Stepper(Entity):
                         self.size[1] * REFERENCE_HEIGHT / max(ui_scale(), 1e-6))
         self.value_text = value_text
         self.on_step = on_step
+        # When set, clicking the number itself (between the chevrons) calls
+        # this instead of stepping. The Physics Lab uses it to start typed
+        # entry; plain steppers leave it None and keep the old behaviour.
+        self.on_value_click = on_value_click
         self.accent = tuple(accent or COLORS['cyan'])
         self.value_colour = tuple(value_colour or COLORS['cyan'])
         width, height = self.size
@@ -1012,6 +1018,24 @@ class Stepper(Entity):
                 (x + right_x, y, zone, h),
                 (x, y, w, h))
 
+    def value_rect(self):
+        """The number's own clickable zone: between the two chevrons.
+
+        A stepper with ``on_value_click`` treats this as an editable field;
+        the rect is clipped short of each chevron so the arrows keep working.
+        """
+        x, y = self.position[0], self.position[1]
+        left_x, right_x = self._chevron_x()
+        zone = px(self.ARROW * 3.0)
+        x0 = left_x + zone / 2.0
+        x1 = right_x - zone / 2.0
+        width = max(px(self.ARROW * 2.0), x1 - x0)
+        return (x + (x0 + x1) / 2.0, y, width, self.size[1] * 0.92)
+
+    def value_hit(self, x, y):
+        vx, vy, vw, vh = self.value_rect()
+        return pointer_in((vx, vy), (vw, vh), x, y)
+
     def click(self, x, y):
         if not widget_active(self):
             return False
@@ -1021,6 +1045,9 @@ class Stepper(Entity):
             return True
         if pointer_in((right[0], right[1]), (right[2], right[3]), x, y):
             self._step(1)
+            return True
+        if callable(self.on_value_click) and self.value_hit(x, y):
+            self.on_value_click(self)
             return True
         if pointer_in((body[0], body[1]), (body[2], body[3]), x, y):
             self._step(1)

@@ -7,6 +7,7 @@ import { COLORS, css, cssA, wrapText } from './theme.js';
 import { div, el, button as makeButton } from './dom.js';
 import { iconNode } from './icons.js';
 import { Screen } from './screens.js';
+import { clampLaunchValue, parseLaunchValue } from './number_field.js';
 
 const READOUT = [
   ['t', 't', 's'], ['v', 'v', 'm/s'], ['a', 'a', 'm/s2'], ['vx', 'vx', 'm/s'],
@@ -14,7 +15,15 @@ const READOUT = [
 ];
 const ROWS = [['speed', 'SPEED'], ['lateral', 'START X'], ['angle', 'AIM'], ['spin', 'HOOK']];
 const STEPS = { speed: 0.25, lateral: 0.05, angle: 0.2, spin: 0.5 };
-const FLOORS = { speed: 0.0 };
+const UNITS = { speed: 'm/s', lateral: 'm', angle: 'deg', spin: 'rad/s' };
+
+// Show up to three decimals without trailing zeros, so a typed 11.37 stays
+// 11.37 instead of being rounded to the old two/one-decimal display.
+function formatValue(value, signed = false) {
+  let text = value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  if (text === '-0') text = '0';
+  return signed && value >= 0 ? `+${text}` : text;
+}
 
 export function equationLines(key, ctx) {
   if (key === 't') return ['t = steps x dt', `= ${ctx.steps} x ${ctx.dt_label} s = ${ctx.t.toFixed(2)} s`];
@@ -55,11 +64,15 @@ export class LabScreen extends Screen {
 
     // left panel: throw controls
     this.launchPanel = this._panel(-0.6489, 0.0, 0.44, 0.66);
-    const launchTitle = el('div', '', this.launchPanel, 'THROW');
+    const launchHead = div('', this.launchPanel);
+    launchHead.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;';
+    const launchTitle = el('div', '', launchHead, 'THROW');
     launchTitle.style.cssText = `font-size:14px;font-weight:700;letter-spacing:1px;color:${css(COLORS.cyan)};`;
+    const launchHint = el('div', '', launchHead, 'CLICK A VALUE TO TYPE IT');
+    launchHint.style.cssText = `font-size:12px;color:${css(COLORS.dim)};`;
     this.steppers = {};
     for (const [key, caption] of ROWS) {
-      this.steppers[key] = this._stepper(caption, () => this._valueText(key), (dir) => this._step(key, dir));
+      this.steppers[key] = this._stepper(key, caption, (dir) => this._step(key, dir));
     }
     this.pauseButton = makeButton(this.root, 'PAUSE', {
       x: 100.8, y: 414, w: 129, h: 36, radius: 10, accent: [255, 214, 130], variant: 'secondary', fontPx: 15,
@@ -153,25 +166,66 @@ export class LabScreen extends Screen {
       + 'border:1px solid transparent;border-image:linear-gradient(90deg, rgba(62,201,232,0.5), rgba(255,61,139,0.5)) 1;overflow:auto;';
     return panel;
   }
-  _stepper(caption, valueText, onStep) {
+  _stepper(key, caption, onStep) {
     const row = div('lab-stepper', this.launchPanel);
     row.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-radius:10px;`
       + `background:${cssA(COLORS.card, 1)};border:1px solid ${cssA(COLORS.hairline, 1)};margin-top:8px;cursor:pointer;`;
     const name = el('div', '', row, caption);
     name.style.cssText = `font-size:15px;color:${css(COLORS.cyan)};`;
     const right = div('', row);
+    right.style.cssText = 'display:flex;align-items:center;gap:8px;';
     const left = el('div', '', right);
-    left.style.cssText = `float:left;color:${css(COLORS.cyan)};margin-right:8px;display:flex;`;
+    left.style.cssText = `color:${css(COLORS.cyan)};display:flex;flex:none;`;
     left.appendChild(iconNode('arrow_left', { size: 13, color: css(COLORS.cyan) }));
-    const val = el('div', '', right, valueText());
-    val.style.cssText = 'float:left;min-width:90px;text-align:center;font-size:15px;font-weight:700;color:#fff;';
+    // The number itself is a real text field, so the player can type an exact
+    // launch (7.63 m/s, -1.25 deg) instead of being limited to the arrow step.
+    // The unit sits beside it and is never part of what gets parsed.
+    const val = el('input', 'lab-value', right);
+    val.type = 'text';
+    val.inputMode = 'decimal';
+    val.autocomplete = 'off';
+    val.spellcheck = false;
+    val.setAttribute('aria-label', `${caption} - type a value and press Enter`);
+    val.style.cssText = `width:74px;padding:2px 6px;border:1px solid transparent;border-radius:6px;`
+      + `background:transparent;color:#fff;font:700 15px/1.25 inherit;text-align:center;`
+      + 'outline:none;user-select:text;';
+    val.value = this._valueText(key);
+    const unit = el('div', '', right, UNITS[key]);
+    unit.style.cssText = `flex:none;min-width:38px;font-size:12px;color:${css(COLORS.dim)};`;
     const rightArrow = el('div', '', right);
-    rightArrow.style.cssText = `float:left;color:${css(COLORS.cyan)};margin-left:8px;display:flex;`;
+    rightArrow.style.cssText = `color:${css(COLORS.cyan)};display:flex;flex:none;`;
     rightArrow.appendChild(iconNode('arrow_right', { size: 13, color: css(COLORS.cyan) }));
     left.addEventListener('click', (e) => { e.stopPropagation(); onStep(-1); });
     rightArrow.addEventListener('click', (e) => { e.stopPropagation(); onStep(1); });
     row.addEventListener('click', () => onStep(1));
-    return { row, val, valueText };
+    // Typing must not also trigger the row's step, and the game's global key
+    // handler already ignores INPUT targets, so the field owns its keys.
+    val.addEventListener('pointerdown', (e) => e.stopPropagation());
+    val.addEventListener('click', (e) => e.stopPropagation());
+    val.addEventListener('focus', () => {
+      val.style.borderColor = cssA(COLORS.cyan, 0.7);
+      val.style.background = cssA(COLORS.cyan, 0.10);
+      // Select the whole number so the first keystroke replaces it, and do it
+      // after the click finishes (a mouseup would otherwise collapse the
+      // selection back to a caret).
+      window.setTimeout(() => { if (document.activeElement === val) val.select(); }, 0);
+    });
+    val.addEventListener('blur', () => {
+      val.style.borderColor = 'transparent';
+      val.style.background = 'transparent';
+      this._commitValue(key, val);
+    });
+    val.addEventListener('change', () => this._commitValue(key, val));
+    val.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); val.blur(); }
+      else if (e.key === 'Escape') {
+        e.preventDefault();
+        val.value = this._valueText(key);
+        val.blur();
+      }
+    });
+    return { row, val, valueText: () => this._valueText(key) };
   }
   _bindScrub() {
     const scrub = (e) => {
@@ -187,16 +241,26 @@ export class LabScreen extends Screen {
   }
   _valueText(key) {
     const s = this.setup;
-    if (key === 'speed') return `${s.speed.toFixed(2)} m/s`;
-    if (key === 'lateral') return `${s.lateral >= 0 ? '+' : ''}${s.lateral.toFixed(2)} m`;
-    if (key === 'angle') return `${s.angle >= 0 ? '+' : ''}${s.angle.toFixed(1)} deg`;
-    return `${s.spin >= 0 ? '+' : ''}${s.spin.toFixed(1)} rad/s`;
+    if (key === 'speed') return formatValue(s.speed);
+    if (key === 'lateral') return formatValue(s.lateral, true);
+    if (key === 'angle') return formatValue(s.angle, true);
+    return formatValue(s.spin, true);
+  }
+  _commitValue(key, input) {
+    const value = parseLaunchValue(key, input.value);
+    if (value !== null && value !== this.setup[key]) {
+      this.setup[key] = value;
+      this.app.play('menu_move');
+    }
+    // Invalid text simply snaps back to the last accepted number.
+    input.value = this._valueText(key);
   }
   _step(key, direction) {
-    let value = this.setup[key] + STEPS[key] * direction;
-    if (FLOORS[key] !== undefined) value = Math.max(FLOORS[key], value);
-    this.setup[key] = value;
-    for (const k of Object.keys(this.steppers)) this.steppers[k].val.textContent = this._valueText(k);
+    this.setup[key] = clampLaunchValue(key, this.setup[key] + STEPS[key] * direction);
+    for (const k of Object.keys(this.steppers)) {
+      const input = this.steppers[k].val;
+      if (document.activeElement !== input) input.value = this._valueText(k);
+    }
     this.app.play('menu_move');
   }
   onShow(kwargs = {}) {
@@ -212,7 +276,7 @@ export class LabScreen extends Screen {
     this.setup.lateral = throwData.lateral_position;
     this.setup.angle = throwData.launch_angle * 180 / Math.PI;
     this.setup.spin = throwData.spin_omega;
-    for (const k of Object.keys(this.steppers)) this.steppers[k].val.textContent = this._valueText(k);
+    for (const k of Object.keys(this.steppers)) this.steppers[k].val.value = this._valueText(k);
   }
   hide() {
     super.hide();

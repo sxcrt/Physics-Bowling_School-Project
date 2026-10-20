@@ -27,6 +27,7 @@ import * as celebrate from '../src/motion/celebrate.js';
 import { Motion, Tween } from '../src/motion/tween.js';
 import * as ease from '../src/motion/ease.js';
 import { keyToCharacter } from '../src/ui/theme.js';
+import { parseLaunchValue, clampLaunchValue } from '../src/ui/number_field.js';
 import { cardModel, frameBoxes, boxCountFor, normaliseMark, isBonusMark } from '../src/ui/cardmodel.js';
 import { BotPlanner } from '../src/game/bot.js';
 import * as config from '../src/config.js';
@@ -67,6 +68,27 @@ test('keyToCharacter covers the Python named-key table', () => {
     ['semicolon', ';'], ['equal', '='], ['plus', '+'], ['asterisk', '*'], ['underscore', '_']]) {
     assert.equal(keyToCharacter(key), ch, key);
   }
+});
+
+// ---------------------------------------------------------------------------
+section('lab launch values (typed entry)');
+test('plain decimals, signs and comma decimal points parse', () => {
+  assert.equal(parseLaunchValue('speed', '11.37'), 11.37);
+  assert.equal(parseLaunchValue('angle', '-3.25'), -3.25);
+  assert.equal(parseLaunchValue('lateral', '+0.75'), 0.75);
+  assert.equal(parseLaunchValue('spin', '2,5'), 2.5);
+  assert.equal(parseLaunchValue('spin', '.5'), 0.5);
+});
+test('units, empty text and malformed numbers are rejected', () => {
+  for (const text of ['', '   ', '7.5 m/s', 'abc', '1.2.3', '--1', 'NaN', '1e3']) {
+    assert.equal(parseLaunchValue('speed', text), null, text);
+  }
+});
+test('speed never goes below zero, the other rows keep their sign', () => {
+  assert.equal(parseLaunchValue('speed', '-4'), 0.0);
+  assert.equal(clampLaunchValue('speed', -0.25), 0.0);
+  assert.equal(parseLaunchValue('lateral', '-1.25'), -1.25);
+  assert.equal(clampLaunchValue('angle', -12.5), -12.5);
 });
 
 // ---------------------------------------------------------------------------

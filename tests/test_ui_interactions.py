@@ -794,6 +794,70 @@ class TestLabSteppers(AppTestCase):
         self.assertEqual(lab.setup.speed, 0.0)
 
 
+class TestLabTypedValues(AppTestCase):
+    """A launch value can be typed exactly, not only stepped by arrows."""
+
+    def open_lab(self):
+        self.app.go_to_lab()
+        self.step(1)
+        return self.active()
+
+    def click_value(self, lab, key):
+        x, y, _w, _h = lab.steppers[key].value_rect()
+        self.click_at(x, y)
+
+    def type_text(self, text):
+        named = {'-': 'minus', '.': 'period', '+': 'plus'}
+        for character in text:
+            self.app.on_key(named.get(character, character))
+
+    def test_typing_an_exact_speed_sets_the_launch_value(self):
+        lab = self.open_lab()
+        self.click_value(lab, 'speed')
+        self.assertEqual(lab.editing_key, 'speed')
+        self.type_text('11.37')
+        self.app.on_key('enter')
+        self.assertIsNone(lab.editing_key)
+        self.assertAlmostEqual(lab.setup.speed, 11.37)
+        self.assertIn('11.37', lab.steppers['speed'].value_text)
+
+    def test_the_first_keystroke_replaces_the_number(self):
+        lab = self.open_lab()
+        self.click_value(lab, 'angle')
+        self.type_text('-3.25')
+        self.app.on_key('enter')
+        self.assertAlmostEqual(lab.setup.angle, -3.25)
+
+    def test_escape_and_invalid_text_keep_the_previous_value(self):
+        lab = self.open_lab()
+        before = lab.setup.lateral
+        self.click_value(lab, 'lateral')
+        self.type_text('0.99')
+        self.app.on_key('escape')
+        self.assertAlmostEqual(lab.setup.lateral, before)
+        self.click_value(lab, 'lateral')
+        self.type_text('1.2.3')
+        self.app.on_key('enter')
+        self.assertAlmostEqual(lab.setup.lateral, before)
+
+    def test_a_typed_speed_is_clamped_at_zero(self):
+        lab = self.open_lab()
+        self.click_value(lab, 'speed')
+        self.type_text('-4')
+        self.app.on_key('enter')
+        self.assertEqual(lab.setup.speed, 0.0)
+
+    def test_typing_does_not_bowl_or_trigger_shortcuts(self):
+        lab = self.open_lab()
+        self.click_value(lab, 'speed')
+        self.app.on_key('space')
+        self.app.on_key('p')
+        self.app.on_key('r')
+        self.assertEqual(lab.state, 'idle')
+        self.assertFalse(lab.paused)
+        self.assertEqual(lab.editing_key, 'speed')
+
+
 class TestLabLiveEquations(AppTestCase):
     """Each live row opens into the equation with the numbers filled in."""
 

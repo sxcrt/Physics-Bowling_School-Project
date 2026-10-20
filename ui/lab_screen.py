@@ -28,7 +28,9 @@ The launch steppers step in both directions and have no upper limit: the lab
 may explore past the match ranges (the ball simply ends up in the gutter, or
 the throw leaves at whatever speed was dialled in). A throw's speed only has a
 floor at zero, because the simulation clamps it there and the readout would
-otherwise show a number the physics is not using.
+otherwise show a number the physics is not using. Clicking the number itself
+lets the player type an exact value (Enter applies it, Escape cancels), so an
+11.37 m/s release no longer has to be reached arrow-step by arrow-step.
 
 Everything shown comes from the simulation: nothing here is a canned
 animation. The throw is described by the same launch conditions a real
@@ -85,6 +87,21 @@ LINE_HEIGHT = 0.020     # one 13 px text line, in UI units
 TL_HEIGHT = 0.16        # the bar's height
 TL_Y = -0.415           # the bar's centre (bottom-centre of the screen)
 TRACK_HEIGHT = 0.008    # the scrub track
+
+
+def format_value(value, signed=False):
+    """Show up to three decimals without trailing zeros.
+
+    A typed launch number has to stay readable: the old one-/two-decimal
+    display would turn an entered ``-3.25`` into ``-3.2`` even though the
+    simulation used the typed value.
+    """
+    text = f'{value:.3f}'.rstrip('0').rstrip('.')
+    if text in ('-0', ''):
+        text = '0'
+    if signed and value >= 0:
+        text = '+' + text
+    return text
 
 
 class ThrowSetup:
@@ -340,13 +357,23 @@ class LabScreen(Screen):
                                  position=(0, 0, theme.CONTENT_Z),
                                  scale=theme.TYPE['small'],
                                  color=theme.rgb('cyan'))
+        self.launch_hint = Text(parent=self.root, text='CLICK A VALUE TO TYPE IT',
+                                origin=(0.5, 0.5),
+                                position=(0, 0, theme.CONTENT_Z),
+                                scale=theme.TYPE['tiny'],
+                                color=theme.rgb('dim'))
         self.setup = ThrowSetup()
         self.steppers = {}
+        self.editing_key = None
+        self.edit_buffer = ''
+        self._edit_fresh = False
+        self._status_before_edit = None
         for key, caption in ROWS:
             self.steppers[key] = theme.Stepper(
                 self.root, caption, self._value_text(key),
                 position=(-0.62, 0.0), scale=(0.34, 0.052),
                 on_step=lambda direction, k=key: self._step(k, direction),
+                on_value_click=lambda _stepper, k=key: self._begin_edit(k),
                 accent=theme.PALETTE['cyan'])
         self.pause_button = theme.MenuButton(
             self.root, 'PAUSE', position=(-0.62, -0.075),
@@ -462,6 +489,8 @@ class LabScreen(Screen):
         top = panel_h / 2.0
         self.launch_title.position = (left_x - panel_w / 2.0 + 0.030,
                                       top - 0.048, theme.CONTENT_Z)
+        self.launch_hint.position = (left_x + panel_w / 2.0 - 0.024,
+                                     top - 0.048, theme.CONTENT_Z)
         self.live_title.position = (right_x - panel_w / 2.0 + 0.030,
                                     top - 0.048, theme.CONTENT_Z)
         self.live_hint.position = (right_x + panel_w / 2.0 - 0.024,
@@ -533,13 +562,14 @@ class LabScreen(Screen):
     # ------------------------------------------------------------------ steppers
     def _value_text(self, key):
         setup = self.setup
+        value = getattr(setup, key)
         if key == 'speed':
-            return f'{setup.speed:5.2f} m/s'
+            return f'{format_value(value)} m/s'
         if key == 'lateral':
-            return f'{setup.lateral:+5.2f} m'
+            return f'{format_value(value, signed=True)} m'
         if key == 'angle':
-            return f'{setup.angle:+5.1f} deg'
-        return f'{setup.spin:+5.1f} rad/s'
+            return f'{format_value(value, signed=True)} deg'
+        return f'{format_value(value, signed=True)} rad/s'
 
     def _step(self, key, direction):
         value = getattr(self.setup, key) + STEPS[key] * direction
@@ -549,6 +579,90 @@ class LabScreen(Screen):
         setattr(self.setup, key, value)
         self.steppers[key].set_value(self._value_text(key))
         self.app.play('menu_move')
+
+    # ----------------------------------------------------------- typed entry
+    def _edit_text(self, key):
+        """The current value as a bare number (no unit, no padding)."""
+        return f'{getattr(self.setup, key):g}'
+
+    def _begin_edit(self, key):
+        """Clicking a value starts typing; the first key replaces the number."""
+        if self.editing_key == key:
+            return
+        self._finish_edit(commit=True)
+        self.editing_key = key
+        self.edit_buffer = self._edit_text(key)
+        self._edit_fresh = True
+        self._status_before_edit = self.tl_status.text
+        caption = dict(ROWS)[key]
+        self.status(f'typing {caption} - ENTER applies, ESC cancels', warn=True)
+        self._render_edit_value()
+        self.app.play('menu_move')
+
+    def _render_edit_value(self):
+        if self.editing_key is None:
+            return
+        stepper = self.steppers[self.editing_key]
+        stepper.set_value(f'{self.edit_buffer}|')
+        stepper.value.set_color(theme.PALETTE['amber'])
+
+    def _edit_key(self, key):
+        """Handle one key while a value is being typed (always consumes it)."""
+        if key in ('enter', 'return'):
+            self._finish_edit(commit=True)
+            return True
+        if key == 'escape':
+            self._finish_edit(commit=False)
+            return True
+        if key == 'backspace':
+            if self._edit_fresh:
+                self.edit_buffer = ''
+                self._edit_fresh = False
+            else:
+                self.edit_buffer = self.edit_buffer[:-1]
+            self._render_edit_value()
+            return True
+        character = theme.key_to_character(key)
+        if character is None:
+            return True
+        if character == ',':
+            character = '.'
+        if character not in '0123456789.+-':
+            return True
+        if self._edit_fresh:
+            self.edit_buffer = character
+            self._edit_fresh = False
+        else:
+            self.edit_buffer += character
+        self._render_edit_value()
+        return True
+
+    def _finish_edit(self, commit):
+        """Apply or discard the typed text and restore the row's readout."""
+        key = self.editing_key
+        if key is None:
+            return
+        value = None
+        if commit:
+            try:
+                value = float(self.edit_buffer)
+            except (TypeError, ValueError):
+                value = None
+        self.editing_key = None
+        self._edit_fresh = False
+        stepper = self.steppers[key]
+        stepper.value.set_color(stepper.value_colour)
+        if value is not None and math.isfinite(value):
+            floor = FLOORS.get(key)
+            if floor is not None:
+                value = max(floor, value)
+            setattr(self.setup, key, value)
+            self.app.play('menu_move')
+        # Invalid text (or ESC) simply snaps back to the last accepted number.
+        stepper.set_value(self._value_text(key))
+        if self._status_before_edit is not None:
+            self.status(self._status_before_edit)
+            self._status_before_edit = None
 
     # ------------------------------------------------------------------ lifecycle
     def on_show(self, match=None, throw=None, **kwargs):
@@ -568,6 +682,7 @@ class LabScreen(Screen):
 
     def hide(self):
         super().hide()
+        self._finish_edit(commit=False)
         # Leave the hall as the player found it: standing pins, no recorder
         # attached to the shared deck and the wide camera shot.
         game = self.app.game
@@ -588,6 +703,7 @@ class LabScreen(Screen):
         Fresh rack, the ball standing at the foul line, an empty timeline and
         no simulation running: the ball will not move until BOWL is clicked.
         """
+        self._finish_edit(commit=True)
         game = self.app.game
         deck = game.pins.deck
         deck.substep_listener = None
@@ -957,7 +1073,18 @@ class LabScreen(Screen):
             f'L {momentum:.2f}  TAU {tau:.2f}  I {ball.inertia:.4f}')
 
     # ------------------------------------------------------------------ input
+    def on_click(self, x, y):
+        """Commit typed text before any other control acts on the click."""
+        if self.editing_key is not None:
+            # Clicking the number being edited again keeps the field open.
+            if self.steppers[self.editing_key].value_hit(x, y):
+                return True
+            self._finish_edit(commit=True)
+        return super().on_click(x, y)
+
     def on_key(self, key):
+        if self.editing_key is not None:
+            return self._edit_key(key)
         if key in ('escape', 'b'):
             self.app.go_to_menu()
             return True
