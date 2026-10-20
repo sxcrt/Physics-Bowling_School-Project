@@ -1,5 +1,12 @@
 # Physics Solver
 
+> Pass 3 note: the browser Physics Lab now runs on one shared relation engine
+> (`src/ui/lab_engine.js`). The engine solves any sufficient combination of
+> known values, uses locked/implied values and soft defaults, and reports
+> guidance or contradictions. See `docs/PHYSICS_ENGINE.md` for the relation
+> catalog and the current behavior. The historical notes below still describe
+> the original desktop solver and the earlier browser layout.
+
 The Physics Lab has two connected tools:
 
 * the **VALUES panel**: every lab quantity is an optional input. Type the
