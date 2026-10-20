@@ -307,6 +307,10 @@ class BallPhysics:
         else:
             self.inertia = (2.0 / 5.0) * self.mass * self.radius ** 2
 
+        # The Physics Lab can study a different surface: a multiplier on every
+        # friction coefficient. Normal play leaves it at 1.0, and the lab puts
+        # it back when it closes.
+        self.friction_scale = 1.0
         self.reset()
 
     # ------------------------------------------------------------------ state
@@ -467,6 +471,7 @@ class BallPhysics:
             mu = (config.GUTTER_FRICTION if self.in_gutter
                   else config.ROLLING_FRICTION)
             direction = _scale(velocity, -1.0 / speed)
+        mu *= self.friction_scale
 
         # F = mu * m * g and a = F / m, so a = mu * g in the friction direction.
         acceleration = _scale(direction, mu * config.GRAVITY)

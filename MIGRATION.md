@@ -238,7 +238,7 @@ checked in the browser build.
 | Question panel (Trivia) with hints and worked solution | ✔ | live in browser |
 | Challenge panel with lane diagram, measured feedback, buttons | ✔ | live in browser; diagram drawn from the real rack |
 | Overlays: pause (4 actions), results (rematch/lab/menu + award banner), handoff banner | ✔ | DOM-click tests |
-| Physics Lab: launch steppers, BOWL/PAUSE/RESET, live equations, scrubbable timeline | ✔ | bowled, paused, scrubbed to t=0.04 s, reset |
+| Physics Lab: launch steppers, lock-based readout calculator, GIVEN/FIND inverse solver, BOWL/PAUSE/RESET, live equations, scrubbable timeline | ✔ | bowled, paused, scrubbed to t=0.04 s, reset |
 | Motion system: result cards, pin pops, flashes, confetti, camera shake, neon breathing/spike, pin glow, dust, impact rings, ball trail, aim guide, sweeper + staggered rack reset | ✔ | ported in `motion/`; triggers fire from the same call sites |
 | Reduce motion | ✔ | a roll completes with shake/flash/pulse suppressed |
 | Synthesised SFX + music bed, volume/mute | ✔ | all 18 buffers decode and play; settings apply live |

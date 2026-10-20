@@ -858,6 +858,337 @@ class TestLabTypedValues(AppTestCase):
         self.assertEqual(lab.editing_key, 'speed')
 
 
+class TestLabCalculator(AppTestCase):
+    """The right-hand panel is a lock-based calculator, not just a readout."""
+
+    def open_lab(self):
+        self.app.go_to_lab()
+        self.step(1)
+        lab = self.active()
+        # The lab keeps a plan between visits; each test starts from the
+        # documented default throw so its expected numbers are unambiguous.
+        lab.setup.speed = 7.5
+        lab.setup.lateral = 0.20
+        lab.setup.angle = -0.4
+        lab.setup.spin = -1.6
+        lab.deceleration = -config.ROLLING_FRICTION * config.GRAVITY
+        lab._begin()
+        return lab
+
+    def type_text(self, text):
+        named = {'-': 'minus', '.': 'period', '+': 'plus', '/': 'slash'}
+        for character in text:
+            self.app.on_key(named.get(character, character))
+
+    def test_clicking_a_value_starts_a_calculator_edit(self):
+        lab = self.open_lab()
+        row = lab._row('t')
+        x, y, _w, _h = row.value_rect()
+        self.click_at(x, y)
+        self.assertEqual(lab.live_editing_key, 't')
+        self.type_text('3')
+        self.app.on_key('enter')
+        self.assertIsNone(lab.live_editing_key)
+        self.assertAlmostEqual(lab._display_values()['t'], 3.0, places=2)
+
+    def test_locking_deceleration_lets_time_solve_the_speed(self):
+        lab = self.open_lab()
+        lab._toggle_lock('a')
+        self.assertTrue(lab.locks['a'])
+        lab._begin_live_edit('t')
+        self.type_text('3')
+        self.app.on_key('enter')
+        self.assertAlmostEqual(lab.setup.speed, 6.390967, places=3)
+        self.assertAlmostEqual(lab.deceleration, -0.1962, places=4)
+        self.assertIn('6.39', lab.steppers['speed'].value_text,
+                      'the concrete throw value follows the solved plan')
+
+    def test_locking_speed_lets_time_solve_the_deceleration(self):
+        lab = self.open_lab()
+        lab._toggle_lock('v')
+        lab._begin_live_edit('t')
+        self.type_text('3')
+        self.app.on_key('enter')
+        self.assertAlmostEqual(lab.setup.speed, 7.5)
+        self.assertAlmostEqual(lab.deceleration, -0.935555, places=3)
+        self.assertIn('-0.94', lab._format_readout('a',
+                                                   lab._display_values()['a']))
+
+    def test_conflicting_locks_are_rejected_without_changing_the_throw(self):
+        lab = self.open_lab()
+        lab._toggle_lock('v')
+        lab._toggle_lock('t')
+        speed_before = lab.setup.speed
+        deceleration_before = lab.deceleration
+        lab._begin_live_edit('a')
+        self.type_text('-0.4')
+        self.app.on_key('enter')
+        self.assertEqual(lab.setup.speed, speed_before)
+        self.assertAlmostEqual(lab.deceleration, deceleration_before)
+        self.assertIn('no solution', lab.tl_status.text)
+
+    def test_editing_a_locked_value_unlocks_it(self):
+        lab = self.open_lab()
+        lab._toggle_lock('v')
+        lab._begin_live_edit('v')
+        self.type_text('9')
+        self.app.on_key('enter')
+        self.assertFalse(lab.locks['v'])
+        self.assertEqual(lab.setup.speed, 9.0)
+        self.assertIn('9', lab.steppers['speed'].value_text)
+
+    def test_the_lock_icon_is_a_real_click_target(self):
+        lab = self.open_lab()
+        row = lab._row('v')
+        x, y, _w, _h = row.lock_rect()
+        self.click_at(x, y)
+        self.assertTrue(lab.locks['v'])
+        self.click_at(x, y)
+        self.assertFalse(lab.locks['v'])
+
+    def test_pins_stays_a_read_only_outcome(self):
+        lab = self.open_lab()
+        row = lab._row('pins')
+        self.assertIsNone(row.on_value_click)
+        lab._begin_live_edit('pins')
+        self.assertIsNone(lab.live_editing_key)
+
+    def test_typing_a_readout_never_bowls(self):
+        lab = self.open_lab()
+        lab._begin_live_edit('v')
+        for key in ('space', 'p', 'r'):
+            self.app.on_key(key)
+        self.assertEqual(lab.state, 'idle')
+        self.assertFalse(lab.paused)
+        self.assertEqual(lab.live_editing_key, 'v')
+
+    def test_typing_momentum_freezes_aim_hook_and_friction(self):
+        lab = self.open_lab()
+        angle, hook, decel = lab.setup.angle, lab.setup.spin, lab.deceleration
+        lab._begin_live_edit('p')
+        self.type_text('5')
+        self.app.on_key('enter')
+        self.assertAlmostEqual(lab.setup.speed, 5.0 / config.BALL_MASS)
+        self.assertEqual(lab.setup.angle, angle)
+        self.assertEqual(lab.setup.spin, hook)
+        self.assertEqual(lab.deceleration, decel)
+        self.assertEqual(
+            lab._format_readout('t', lab._display_values()['t']),
+            'never', 'a 5 kg m/s ball stops before the head pin')
+
+    def test_zero_deceleration_is_a_frictionless_plan(self):
+        lab = self.open_lab()
+        speed, angle, hook = (lab.setup.speed, lab.setup.angle,
+                              lab.setup.spin)
+        lab._begin_live_edit('a')
+        self.type_text('0')
+        self.app.on_key('enter')
+        self.assertEqual(lab.setup.speed, speed)
+        self.assertEqual(lab.setup.angle, angle)
+        self.assertEqual(lab.setup.spin, hook)
+        self.assertEqual(lab.deceleration, 0.0)
+        self.assertAlmostEqual(lab._display_values()['t'], 2.4386667,
+                               places=4)
+
+    def test_sideways_speed_changes_aim_but_not_speed(self):
+        lab = self.open_lab()
+        speed, hook, decel = (lab.setup.speed, lab.setup.spin,
+                              lab.deceleration)
+        lab._begin_live_edit('vx')
+        self.type_text('0.5')
+        self.app.on_key('enter')
+        self.assertEqual(lab.setup.speed, speed)
+        self.assertEqual(lab.setup.spin, hook)
+        self.assertEqual(lab.deceleration, decel)
+        self.assertNotAlmostEqual(lab.setup.angle, -0.4)
+
+    def test_zero_momentum_is_an_at_rest_plan(self):
+        lab = self.open_lab()
+        lab._begin_live_edit('p')
+        self.type_text('0')
+        self.app.on_key('enter')
+        self.assertEqual(lab.setup.speed, 0.0)
+        self.assertEqual(
+            lab._format_readout('t', lab._display_values()['t']), 'never')
+
+    def test_a_readout_accepts_the_unit_typed_with_it(self):
+        lab = self.open_lab()
+        lab._begin_live_edit('p')
+        self.type_text('5kg/ms')
+        self.app.on_key('enter')
+        self.assertAlmostEqual(lab.setup.speed, 5.0 / config.BALL_MASS)
+        self.assertEqual(lab.setup.angle, -0.4)
+        self.assertEqual(lab.setup.spin, -1.6)
+
+    def test_frictionless_then_zero_momentum_keeps_frictionless(self):
+        lab = self.open_lab()
+        lab._begin_live_edit('a')
+        self.type_text('0')
+        self.app.on_key('enter')
+        lab._begin_live_edit('p')
+        self.type_text('5')
+        self.app.on_key('enter')
+        self.assertEqual(lab.deceleration, 0.0)
+        self.assertAlmostEqual(lab._display_values()['t'], 21.948, places=3)
+
+    def test_opening_and_closing_a_value_without_typing_keeps_the_run(self):
+        lab = self.open_lab()
+        lab.bowl()
+        self.step(2)
+        state = lab.state
+        row = lab._row('v')
+        x, y, _w, _h = row.value_rect()
+        self.click_at(x, y)
+        self.assertEqual(lab.live_editing_key, 'v')
+        self.app.on_key('enter')
+        self.assertIsNone(lab.live_editing_key)
+        self.assertEqual(lab.state, state,
+                         'a no-op edit must not reset the replay')
+
+
+class TestLabSolver(AppTestCase):
+    """The explicit GIVEN / FIND / RESULT inverse-solver overlay."""
+
+    def open_solver(self):
+        self.app.go_to_lab()
+        self.step(1)
+        lab = self.active()
+        lab.setup.speed = 7.5
+        lab.setup.lateral = 0.20
+        lab.setup.angle = -0.4
+        lab.setup.spin = -1.6
+        lab.deceleration = -config.ROLLING_FRICTION * config.GRAVITY
+        lab._begin()
+        lab.solver_equation_id = 'uniform_motion'
+        lab.solver_find = 't'
+        lab.solver_given = {}
+        lab.solver_result = None
+        lab._sync_solver_form()
+        lab.open_solver()
+        return lab
+
+    def type_text(self, text):
+        named = {'-': 'minus', '.': 'period', '+': 'plus', '/': 'slash'}
+        for character in text:
+            self.app.on_key(named.get(character, character))
+
+    def set_given(self, lab, symbol, text):
+        row = lab.solver_inputs[symbol]
+        lab._begin_solver_edit(row)
+        self.type_text(text)
+        self.app.on_key('enter')
+
+    def test_the_solver_opens_from_its_button(self):
+        self.app.go_to_lab()
+        self.step(1)
+        lab = self.active()
+        self.click_widget(lab.solver_button)
+        self.assertTrue(lab.solver_open)
+        self.assertTrue(lab.solver_root.enabled)
+        self.assertIsNone(lab.solver_editing_symbol)
+
+    def test_distance_speed_find_time(self):
+        lab = self.open_solver()
+        self.assertEqual(lab.solver_equation_id, 'uniform_motion')
+        self.assertEqual(lab.solver_find, 't')
+        self.set_given(lab, 'd', '18.3')
+        self.set_given(lab, 'v', '7.5')
+        lab._solve_solver()
+        self.assertTrue(lab.solver_result['ok'])
+        self.assertAlmostEqual(lab.solver_result['value'], 2.44, places=2)
+        self.assertEqual(lab.solver_result['answer'], 't = 2.44 s')
+        self.assertIn('t = d / v', lab.solver_result_text.text)
+        self.assertIn('SUBSTITUTION', lab.solver_result_text.text)
+
+    def test_missing_information_is_named_not_invented(self):
+        lab = self.open_solver()
+        lab.solver_equation_id = 'force'
+        lab.solver_find = 'a'
+        lab._sync_solver_form()
+        self.set_given(lab, 'F', '12')
+        lab._solve_solver()
+        self.assertFalse(lab.solver_result['ok'])
+        self.assertIn('m', lab.solver_result['missing'])
+        self.assertIn('Mass (m)', lab.solver_result['message'])
+
+    def test_the_solver_accepts_common_units(self):
+        lab = self.open_solver()
+        self.set_given(lab, 'd', '1830cm')
+        self.set_given(lab, 'v', '27km/h')
+        self.assertAlmostEqual(lab.solver_given['d'], 18.3)
+        self.assertAlmostEqual(lab.solver_given['v'], 7.5)
+        lab._solve_solver()
+        self.assertTrue(lab.solver_result['ok'])
+        self.assertAlmostEqual(lab.solver_result['value'], 2.44, places=2)
+
+    def test_a_solver_result_can_be_applied_without_bowling(self):
+        lab = self.open_solver()
+        lab.solver_equation_id = 'kinetic_energy'
+        lab.solver_find = 'v'
+        lab.solver_given = {'K': 168.75, 'm': 6.0}
+        lab._sync_solver_form()
+        lab._solve_solver()
+        self.assertTrue(lab.solver_result['ok'])
+        self.assertAlmostEqual(lab.solver_result['apply']['speed'], 7.5)
+        self.assertEqual(lab.state, 'idle',
+                         'solving must not launch the ball')
+        lab._apply_solver_result()
+        self.assertFalse(lab.solver_open)
+        self.assertEqual(lab.setup.speed, 7.5)
+        self.assertEqual(lab.state, 'idle',
+                         'applying values must not launch the ball')
+
+    def test_applying_a_deceleration_updates_the_lane(self):
+        lab = self.open_solver()
+        lab.solver_equation_id = 'displacement_time'
+        lab.solver_find = 'a'
+        lab.solver_given = {'d': 18.29, 'u': 7.5, 't': 3.0}
+        lab._sync_solver_form()
+        lab._solve_solver()
+        self.assertTrue(lab.solver_result['ok'])
+        lab._apply_solver_result()
+        self.assertAlmostEqual(lab.deceleration, -0.9355556, places=6)
+        self.assertEqual(lab.setup.speed, 7.5)
+        self.assertEqual(lab.state, 'idle')
+
+    def test_applying_an_aim_updates_the_throw(self):
+        lab = self.open_solver()
+        lab.solver_equation_id = 'sideways_velocity'
+        lab.solver_find = 'theta'
+        lab.solver_given = {'vx': 0.5, 'v': 7.5}
+        lab._sync_solver_form()
+        lab._solve_solver()
+        self.assertTrue(lab.solver_result['ok'])
+        lab._apply_solver_result()
+        self.assertAlmostEqual(lab.setup.angle, 3.82255, places=4)
+        self.assertEqual(lab.setup.speed, 7.5)
+        self.assertEqual(lab.state, 'idle')
+
+    def test_an_analytical_result_without_a_shot_parameter_does_not_apply(self):
+        lab = self.open_solver()
+        lab.solver_equation_id = 'force'
+        lab.solver_find = 'a'
+        lab.solver_given = {'F': 12.0, 'm': 4.0}
+        lab._sync_solver_form()
+        lab._solve_solver()
+        self.assertTrue(lab.solver_result['ok'])
+        lab._apply_solver_result()
+        self.assertTrue(lab.solver_open)
+        self.assertEqual(lab.setup.speed, 7.5)
+
+    def test_space_does_not_bowl_while_the_solver_is_open(self):
+        lab = self.open_solver()
+        self.app.on_key('space')
+        self.assertEqual(lab.state, 'idle')
+        self.assertTrue(lab.solver_open)
+
+    def test_the_solver_closes_on_escape(self):
+        lab = self.open_solver()
+        self.app.on_key('escape')
+        self.assertFalse(lab.solver_open)
+        self.assertEqual(self.active().name, 'lab')
+
+
 class TestLabLiveEquations(AppTestCase):
     """Each live row opens into the equation with the numbers filled in."""
 

@@ -44,11 +44,18 @@ python -m pytest tests/test_questions.py tests/test_session.py tests/test_audio.
 | `test_swing.py`, `test_swing_release.py` | swing recognition: phases, rejects, release conditions, duplicate prevention |
 | `test_tracking.py`, `test_webcam_input.py` | the tracking service, camera errors, snapshots, and the event-to-throw mapping |
 | `test_release_model.py` | the mouse release model: A/D positioning, aim sweeping, release-direction yaw, speed from the stroke, hook from the sidestep, capped values, determinism, the off-by-default release noise, and that the input layer cannot decide a pin count |
-| `test_ui_interactions.py` | real clicks through the input path (Settings opens, Back returns, Play opens the picker, every mode starts, overlays act), typed launch values in the Physics Lab, the pointer fallbacks, the progressive-hint trivia flow and the Equation Mode panel (typing, BOWL IT, measured feedback, the solution button) |
+| `test_lab_model.py` | the Physics Lab calculator: plan derivation, deterministic one-variable edits that freeze every other core value, lock fallbacks (time/speed/friction, sideways-speed/aim, spin/hook), zero momentum/energy, "never" stop-short times, unit-tolerant readout entry, conflicting locks being rejected by name |
+| `test_physics_equations.py` | the inverse physics engine: every supported equation solved for every variable, formula/substitution/answer strings, missing information named rather than invented, fallback to another equation, conservative simulation-apply hints, undefined divisions/impossible travel, multiple roots, and agreement with the lab's plan model when the assumptions match |
+| `test_ui_interactions.py` | real clicks through the input path (Settings opens, Back returns, Play opens the picker, every mode starts, overlays act), typed launch values and the lock-based readout calculator in the Physics Lab, the GIVEN/FIND solver overlay (solve, missing information, apply to shot without launching), the pointer fallbacks, the progressive-hint trivia flow and the Equation Mode panel (typing, BOWL IT, measured feedback, the solution button) |
 | `test_timeline.py` | the Physics Lab's recorded simulation states: capture/restore round trips, exact resume, the sub-step listener's neutrality, timeline indexing/restoring/forking, and the torque readout |
 | `test_lab_timeline.py` | the Physics Lab through the real screen: nothing rolls on entry, BOWL/PAUSE/RESET, scrubbing restores the exact state, resuming from a scrubbed state forks the timeline, and the lab leaves the shared deck clean |
 | `test_motion.py` | the animation core: the two easing curves, tween delay/loop/cancel, timelines, count-ups, the config object, reduce motion and the scoreboard state machine (reveal, breathing highlight, score pop, mark stamp, count-up, final pulse) |
 | `test_motion_runtime.py` | the animation system driven through the real play screen offscreen: every trigger (`onMatchStart`, `onThrowRelease`, `onPinsResolved`, `onScoreEntry`, `onFrameAdvance`, `onPinReset`, `onGameEnd`), the key chips, the power meter, the pin wave, the paused branch and reduce motion |
+
+The browser's unified optional VALUES model - `solveLab`, `findField`,
+`parseOptionalValue`, blank-versus-zero handling, conflicts, auto placeholders
+and the missing-variable solver - is covered by `tools/js_tests.mjs` (the
+browser build is static and has no Python equivalent for that UI).
 
 ## Regression suites worth knowing about
 

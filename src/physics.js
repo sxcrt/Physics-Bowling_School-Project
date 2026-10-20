@@ -155,6 +155,10 @@ export class BallPhysics {
     } else {
       this.inertia = (2.0 / 5.0) * this.mass * this.radius ** 2;
     }
+    // The Physics Lab can study a different surface: a multiplier on every
+    // friction coefficient. Normal play leaves it at 1.0, and the lab puts it
+    // back when it closes.
+    this.friction_scale = 1.0;
     this.reset();
   }
 
@@ -226,6 +230,7 @@ export class BallPhysics {
       mu = this.in_gutter ? config.GUTTER_FRICTION : config.ROLLING_FRICTION;
       direction = scale(velocity, -1.0 / speed);
     }
+    mu *= this.friction_scale;
     const acceleration = scale(direction, mu * config.GRAVITY);
     this.last_acceleration = acceleration;
     const newVelocity = add(velocity, scale(acceleration, dt));

@@ -87,6 +87,14 @@ function shapeFor(name) {
       return polygon(gearPoints()) + ellipse(38, 38, 58, 58, 'fill="#000"');
     case 'check':
       return polyline([[26, 50], [42, 66], [70, 32]], 12);
+    case 'lock':
+      return `<path d="M30 46 V32 A18 18 0 0 1 66 32 V46" stroke="#fff" stroke-width="9" fill="none" stroke-linecap="round"/>`
+        + `<rect x="20" y="44" width="56" height="44" rx="9" ry="9" fill="#fff"/>`
+        + `<rect x="44" y="56" width="8" height="20" rx="4" ry="4" fill="#000"/>`;
+    case 'unlock':
+      return `<path d="M30 46 V30 A18 18 0 0 1 64 25" stroke="#fff" stroke-width="9" fill="none" stroke-linecap="round"/>`
+        + `<rect x="20" y="44" width="56" height="44" rx="9" ry="9" fill="#fff"/>`
+        + `<rect x="44" y="56" width="8" height="20" rx="4" ry="4" fill="#000"/>`;
     case 'arrow_left':
       return polygon([[58, 16], [24, 48], [58, 80]]) + `<rect x="44" y="42" width="34" height="12" fill="#fff"/>`;
     case 'arrow_right':
@@ -101,7 +109,7 @@ function shapeFor(name) {
 }
 
 export const ICON_NAMES = ['pin', 'question', 'sigma', 'people2', 'people3', 'robot',
-  'stopwatch', 'gear', 'check', 'arrow_left', 'arrow_right', 'arrow_up', 'arrow_down'];
+  'stopwatch', 'gear', 'check', 'lock', 'unlock', 'arrow_left', 'arrow_right', 'arrow_up', 'arrow_down'];
 
 // The markup for one icon; `currentColor` drives the tint. Pure string work,
 // so it is testable without a DOM.

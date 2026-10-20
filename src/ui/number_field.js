@@ -12,6 +12,15 @@ export const VALUE_FLOORS = { speed: 0.0 };
 
 const PLAIN_DECIMAL = /^[+-]?(?:\d+\.?\d*|\.\d+)$/;
 
+export function parseNumber(text) {
+  const cleaned = String(text === undefined || text === null ? '' : text)
+    .trim()
+    .replace(/,/g, '.');
+  if (!PLAIN_DECIMAL.test(cleaned)) return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
 export function clampLaunchValue(key, value) {
   if (!Number.isFinite(value)) return NaN;
   const floor = VALUE_FLOORS[key];
@@ -19,11 +28,27 @@ export function clampLaunchValue(key, value) {
 }
 
 export function parseLaunchValue(key, text) {
-  const cleaned = String(text === undefined || text === null ? '' : text)
-    .trim()
-    .replace(/,/g, '.');
-  if (!PLAIN_DECIMAL.test(cleaned)) return null;
-  const value = Number(cleaned);
-  if (!Number.isFinite(value)) return null;
+  const value = parseNumber(text);
+  if (value === null) return null;
   return clampLaunchValue(key, value);
+}
+
+// Readout fields show their unit beside the number, but players often type it
+// anyway ("5kg/ms", "0m/s^2", "3 s"). Strip a known unit suffix, then parse.
+const READOUT_UNITS = {
+  t: ['s'],
+  v: ['m/s'], vx: ['m/s'],
+  a: ['m/s^2', 'm/s2'],
+  p: ['kg*m/s', 'kgm/s', 'kg/ms'],
+  K: ['j'],
+};
+
+export function parseReadoutValue(key, text) {
+  const raw = String(text === undefined || text === null ? '' : text).trim();
+  const compact = raw.replace(/\s+/g, '').toLowerCase();
+  for (const unit of READOUT_UNITS[key] || []) {
+    if (!compact.endsWith(unit)) continue;
+    return parseNumber(compact.slice(0, compact.length - unit.length));
+  }
+  return parseNumber(raw);
 }

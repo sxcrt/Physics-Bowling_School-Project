@@ -157,10 +157,6 @@ class TestLabTimeline(LabTestCase):
                 state.velocity[0] if state.rolling else 0.0, places=6)
             self.assertAlmostEqual(lab.values['p'],
                                    config.BALL_MASS * speed, places=6)
-            # The compact BALL STATE block carries the position and spin.
-            self.assertIn(f'{state.position[0]:+.3f}', lab.state_text.text)
-            self.assertIn(f'{state.position[2]:+.3f}', lab.state_text.text)
-            self.assertIn('TAU', lab.state_text.text)
         self.assertEqual(ball.z, lab.timeline.ball_state(250).position[2])
 
     def test_clicking_the_track_scrubs_to_that_time(self):

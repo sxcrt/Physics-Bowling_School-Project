@@ -27,7 +27,15 @@ import * as celebrate from '../src/motion/celebrate.js';
 import { Motion, Tween } from '../src/motion/tween.js';
 import * as ease from '../src/motion/ease.js';
 import { keyToCharacter } from '../src/ui/theme.js';
-import { parseLaunchValue, clampLaunchValue } from '../src/ui/number_field.js';
+import { parseLaunchValue, clampLaunchValue, parseReadoutValue } from '../src/ui/number_field.js';
+import {
+  planDerived, solvePlan, headPinTime, decelerationToScale,
+  DEFAULT_LAB_PLAN, solveLab, findField, parseOptionalValue,
+} from '../src/ui/lab_model.js';
+import {
+  solveSystem, INITIAL_TYPED, CONSTANT_DEFAULTS, hookModel, fmt,
+} from '../src/ui/lab_solver.js';
+import { solveEquation, EQUATIONS } from '../src/ui/physics_equations.js';
 import { cardModel, frameBoxes, boxCountFor, normaliseMark, isBonusMark } from '../src/ui/cardmodel.js';
 import { BotPlanner } from '../src/game/bot.js';
 import * as config from '../src/config.js';
@@ -89,6 +97,518 @@ test('speed never goes below zero, the other rows keep their sign', () => {
   assert.equal(clampLaunchValue('speed', -0.25), 0.0);
   assert.equal(parseLaunchValue('lateral', '-1.25'), -1.25);
   assert.equal(clampLaunchValue('angle', -12.5), -12.5);
+});
+test('readout values accept the unit printed beside them', () => {
+  assert.equal(parseReadoutValue('t', '3 s'), 3);
+  assert.equal(parseReadoutValue('v', '33m/s'), 33);
+  assert.equal(parseReadoutValue('a', '-0.2m/s^2'), -0.2);
+  assert.equal(parseReadoutValue('a', '-0.2m/s2'), -0.2);
+  assert.equal(parseReadoutValue('p', '5kg/ms'), 5);
+  assert.equal(parseReadoutValue('p', '5 kg m/s'), 5);
+  assert.equal(parseReadoutValue('K', '10 J'), 10);
+  assert.equal(parseReadoutValue('v', '5 bananas'), null);
+  assert.equal(parseReadoutValue('t', 's'), null);
+});
+
+// ---------------------------------------------------------------------------
+section('physics lab calculator');
+const CORE = { v: 7.5, angle: -0.4, hook: -1.6, a: -0.1962, lateral: 0.2 };
+test('the plan derives the launch quantities', () => {
+  const plan = planDerived(CORE);
+  assert.ok(Math.abs(plan.t - 2.521852) < 0.001, String(plan.t));
+  assert.ok(Math.abs(plan.vx + 0.052359) < 0.001, String(plan.vx));
+  assert.ok(Math.abs(plan.spin - 68.82594) < 0.001, String(plan.spin));
+  assert.equal(plan.p, 45);
+  assert.equal(plan.K, 168.75);
+  assert.ok(Math.abs(plan.frictionScale - 1) < 1e-9);
+});
+test('momentum and energy both solve the speed', () => {
+  const momentum = solvePlan(CORE, { p: 60 });
+  assert.equal(momentum.ok, true);
+  assert.ok(Math.abs(momentum.core.v - 10) < 1e-9, String(momentum.core.v));
+  assert.ok(Math.abs(momentum.derived.K - 300) < 1e-6);
+  const energy = solvePlan(CORE, { K: 300 });
+  assert.equal(energy.ok, true);
+  assert.ok(Math.abs(energy.core.v - 10) < 1e-9, String(energy.core.v));
+  assert.ok(Math.abs(energy.derived.p - 60) < 1e-6);
+});
+test('a locked deceleration lets the time solve the speed', () => {
+  const out = solvePlan(CORE, { a: -0.1962, t: 3.0 });
+  assert.equal(out.ok, true);
+  assert.ok(Math.abs(out.derived.t - 3.0) < 1e-6, String(out.derived.t));
+  assert.ok(Math.abs(out.core.v - 6.390967) < 0.001, String(out.core.v));
+});
+test('a locked speed lets the time solve the deceleration', () => {
+  const out = solvePlan(CORE, { v: 7.5, t: 3.0 });
+  assert.equal(out.ok, true);
+  assert.ok(Math.abs(out.derived.t - 3.0) < 1e-6, String(out.derived.t));
+  assert.ok(Math.abs(out.core.a + 0.935555) < 0.001, out.core.a);
+});
+test('sideways speed solves the aim when the speed is locked', () => {
+  const out = solvePlan(CORE, { v: 7.5, vx: 0.5 });
+  assert.equal(out.ok, true);
+  assert.ok(Math.abs(out.derived.vx - 0.5) < 1e-6, String(out.derived.vx));
+  assert.ok(Math.abs(out.core.angle - 3.822554) < 0.001, String(out.core.angle));
+});
+test('total spin solves the hook when the speed is locked', () => {
+  const out = solvePlan(CORE, { v: 7.5, spin: 80.0 });
+  assert.equal(out.ok, true);
+  assert.ok(Math.abs(out.derived.spin - 80.0) < 1e-3, String(out.derived.spin));
+  assert.ok(Math.abs(out.core.hook + 40.81106) < 0.001, String(out.core.hook));
+});
+test('incompatible locks are reported instead of approximated', () => {
+  assert.equal(solvePlan(CORE, { v: 7.5, t: 2.5, a: -0.4 }).ok, false);
+  assert.equal(solvePlan(CORE, { p: 45, K: 200 }).ok, false);
+});
+test('head-pin time and the friction scale follow the definitions', () => {
+  assert.ok(Math.abs(headPinTime(7.5, -0.1962) - 2.521852) < 0.001);
+  assert.equal(headPinTime(0, -0.1962), Infinity);
+  assert.ok(Math.abs(decelerationToScale(-0.1962) - 1.0) < 1e-9);
+  assert.equal(decelerationToScale(0), 0);
+});
+test('a single edit freezes every other core value exactly', () => {
+  const momentum = solvePlan(CORE, { p: 5 });
+  assert.equal(momentum.ok, true);
+  assert.equal(momentum.core.v, 5 / 6);
+  assert.equal(momentum.core.angle, CORE.angle);
+  assert.equal(momentum.core.hook, CORE.hook);
+  assert.equal(momentum.core.a, CORE.a);
+  assert.equal(momentum.derived.t, Infinity);
+
+  const friction = solvePlan(CORE, { a: 0 });
+  assert.equal(friction.ok, true);
+  assert.equal(friction.core.v, CORE.v);
+  assert.equal(friction.core.angle, CORE.angle);
+  assert.equal(friction.core.hook, CORE.hook);
+  assert.equal(friction.core.a, 0);
+  assert.ok(Math.abs(friction.derived.t - 2.4386667) < 1e-5);
+});
+test('edits compose without losing the earlier hold', () => {
+  const first = solvePlan(CORE, { a: 0 });
+  const second = solvePlan(first.core, { p: 5 });
+  assert.equal(second.ok, true);
+  assert.equal(second.core.a, 0);
+  assert.equal(second.core.v, 5 / 6);
+  assert.ok(Math.abs(second.derived.t - 21.948) < 1e-3);
+});
+test('sideways speed changes the aim only, and spin the hook only', () => {
+  const sideways = solvePlan(CORE, { vx: 0.5 });
+  assert.equal(sideways.ok, true);
+  assert.equal(sideways.core.v, CORE.v);
+  assert.equal(sideways.core.hook, CORE.hook);
+  assert.equal(sideways.core.a, CORE.a);
+  assert.ok(Math.abs(sideways.derived.vx - 0.5) < 1e-9);
+
+  const spin = solvePlan(CORE, { spin: 80 });
+  assert.equal(spin.ok, true);
+  assert.equal(spin.core.v, CORE.v);
+  assert.equal(spin.core.angle, CORE.angle);
+  assert.equal(spin.core.a, CORE.a);
+  assert.ok(Math.abs(spin.derived.spin - 80) < 1e-6);
+});
+test('zero momentum and zero energy are legitimate at-rest plans', () => {
+  for (const key of ['p', 'K']) {
+    const out = solvePlan(CORE, { [key]: 0 });
+    assert.equal(out.ok, true, key);
+    assert.equal(out.core.v, 0, key);
+    assert.equal(out.derived.t, Infinity, key);
+  }
+});
+test('locks fall back to the alternative core value', () => {
+  const speedHeld = solvePlan(CORE, { t: 3, v: 7.5 });
+  assert.equal(speedHeld.ok, true);
+  assert.equal(speedHeld.core.v, 7.5);
+  assert.ok(Math.abs(speedHeld.core.a + 0.9355556) < 1e-6);
+
+  const timeHeld = solvePlan(CORE, { v: 9, t: 3 });
+  assert.equal(timeHeld.ok, true);
+  assert.equal(timeHeld.core.v, 9);
+  assert.ok(Math.abs(timeHeld.derived.t - 3) < 1e-6);
+
+  const decelHeld = solvePlan(CORE, { t: 3, a: -0.4 });
+  assert.equal(decelHeld.ok, true);
+  assert.equal(decelHeld.core.a, -0.4);
+  assert.ok(Math.abs(decelHeld.derived.t - 3) < 1e-6);
+});
+test('a lock that cannot be honoured names the conflicting target', () => {
+  const out = solvePlan(CORE, { v: 7.5, p: 5 });
+  assert.equal(out.ok, false);
+  assert.equal(out.conflict, 'p');
+  assert.equal(out.core.v, CORE.v);
+});
+
+// ---------------------------------------------------------------------------
+section('constraint solver (rotational / kinematics lab)');
+const near = (actual, expected, eps = 1e-6) => {
+  assert.ok(Math.abs(actual - expected) <= eps,
+    `expected ${expected}, got ${actual}`);
+};
+
+test('the initial panel solves every derived variable at full precision', () => {
+  const out = solveSystem(INITIAL_TYPED);
+  assert.equal(out.ok, true);
+  assert.equal(out.status, 'solved');
+  near(out.values.time, 2.521852, 1e-5);
+  near(out.values.accel, -0.1962, 1e-9);
+  near(out.values.sideways, -0.052359, 1e-5);
+  near(out.values.momentum, 45, 1e-9);
+  near(out.values.energy, 168.75, 1e-9);
+  assert.equal(out.sources.time, 'solved');
+  assert.equal(out.sources.speed, 'known');
+  assert.ok(out.work.some((entry) => entry.key === 'accel'));
+  assert.ok(out.work.some((entry) => entry.key === 'time'));
+  assert.ok(out.work.some((entry) => entry.key === 'energy'));
+});
+
+test('clearing every variable gives the requested underdetermined message', () => {
+  const out = solveSystem(CONSTANT_DEFAULTS);
+  assert.equal(out.ok, false);
+  assert.equal(out.status, 'underdetermined');
+  assert.equal(out.message, 'Need one more of: Speed, Time, Momentum or Energy.');
+  assert.ok(out.missingKeys.has('speed'));
+  assert.ok(out.missingKeys.has('sideways'));
+  assert.equal(out.values.accel, -0.1962);
+});
+
+test('a typed value holds and the blank fields resolve around it', () => {
+  const out = solveSystem({ ...CONSTANT_DEFAULTS, speed: 7.5 });
+  assert.equal(out.ok, true);
+  near(out.values.time, 2.521852, 1e-5);
+  near(out.values.momentum, 45, 1e-9);
+  near(out.values.energy, 168.75, 1e-9);
+  assert.equal(out.sources.speed, 'known');
+  assert.equal(out.sources.time, 'solved');
+});
+
+test('time can be entered and speed solved from the lane equation', () => {
+  const out = solveSystem({
+    ...CONSTANT_DEFAULTS, time: 2.521852, start: 0.2, aim: -0.4, hook: -1.6,
+  });
+  assert.equal(out.ok, true);
+  near(out.values.speed, 7.5, 1e-4);
+  near(out.values.accel, -0.1962, 1e-9);
+  near(out.values.time, 2.521852, 1e-6);
+  assert.equal(out.sources.time, 'known');
+  assert.equal(out.sources.speed, 'solved');
+});
+
+test('solving for acceleration needs mu or g to be free', () => {
+  const out = solveSystem({
+    mass: 6, gravity: 9.81, length: 18.29, speed: 7.5, time: 3,
+    start: 0.2, aim: -0.4, hook: -1.6, hookK: 0.55,
+  });
+  assert.equal(out.ok, true);
+  near(out.values.accel, -0.935556, 1e-5);
+  near(out.values.mu, 0.095368, 1e-5);
+  assert.equal(out.sources.accel, 'solved');
+  assert.equal(out.sources.mu, 'solved');
+});
+
+test('constants are constraints and can be solved themselves', () => {
+  const mass = solveSystem({ ...CONSTANT_DEFAULTS, mass: undefined, momentum: 45, speed: 7.5 });
+  assert.equal(mass.ok, true);
+  near(mass.values.mass, 6, 1e-9);
+  assert.equal(mass.sources.mass, 'solved');
+
+  const gravity = solveSystem({ ...CONSTANT_DEFAULTS, gravity: undefined, accel: -0.1962, mu: 0.02 });
+  assert.equal(gravity.sources.gravity, 'solved');
+  near(gravity.values.gravity, 9.81, 1e-9);
+
+  const length = solveSystem({
+    ...CONSTANT_DEFAULTS, length: undefined,
+    speed: 7.5, time: 2.521852, accel: -0.1962,
+  });
+  assert.equal(length.sources.length, 'solved');
+  near(length.values.length, 18.29, 1e-4);
+});
+
+test('contradictory known fields are flagged with the mismatch', () => {
+  const out = solveSystem({ ...CONSTANT_DEFAULTS, momentum: 45, energy: 20, mass: 6 });
+  assert.equal(out.ok, false);
+  assert.equal(out.status, 'conflict');
+  assert.match(out.message, /Momentum 45 kg·m\/s ≠ m·v = /);
+  assert.ok(out.conflictKeys.has('momentum'));
+  assert.ok(out.conflictKeys.has('energy'));
+});
+
+test('a typed acceleration must agree with mu and g', () => {
+  const out = solveSystem({ ...CONSTANT_DEFAULTS, speed: 7.5, accel: -0.4 });
+  assert.equal(out.ok, false);
+  assert.match(out.message, /Accel -0.4 m\/s² ≠ −μ·g = -0.1962 m\/s²/);
+});
+
+test('the quadratic picks the smallest positive arrival time', () => {
+  const out = solveSystem({ ...CONSTANT_DEFAULTS, speed: 7.5 });
+  assert.equal(out.ok, true);
+  const entry = out.work.find((item) => item.key === 'time');
+  assert.ok(entry);
+  assert.match(entry.note, /Two positive roots/);
+  near(out.values.time, 2.521852, 1e-5);
+});
+
+test('an ambiguous zero case is missing, not contradictory', () => {
+  const mass = solveSystem({
+    ...CONSTANT_DEFAULTS, mass: undefined, momentum: 0, speed: 0,
+  });
+  assert.ok(mass.missing.includes('mass'));
+  assert.equal(mass.conflictKeys.has('mass'), false);
+
+  const gravity = solveSystem({
+    ...CONSTANT_DEFAULTS, gravity: undefined, accel: 0, mu: 0,
+  });
+  assert.equal(gravity.status, 'underdetermined');
+  assert.ok(gravity.missing.includes('gravity'));
+  assert.equal(gravity.conflictKeys.has('gravity'), false);
+});
+
+test('the hook model is a_lat = k times hook', () => {
+  const hook = hookModel(-1.6, 0.55);
+  near(hook.lateralAccel, -0.88, 1e-9);
+  assert.match(hook.formula, /a_lat = k·hook/);
+  assert.equal(fmt(45, 4), '45');
+  assert.equal(fmt(2.521852, 4), '2.5219');
+});
+
+// ---------------------------------------------------------------------------
+section('unified optional-input lab');
+test('all blank uses the documented default plan', () => {
+  const out = solveLab({});
+  assert.equal(out.ok, true);
+  assert.equal(out.core.v, DEFAULT_LAB_PLAN.v);
+  assert.equal(out.core.lateral, DEFAULT_LAB_PLAN.lateral);
+  assert.equal(out.core.angle, DEFAULT_LAB_PLAN.angle);
+  assert.equal(out.core.hook, DEFAULT_LAB_PLAN.hook);
+  assert.equal(out.core.a, DEFAULT_LAB_PLAN.a);
+  assert.equal(out.sources.speed, 'auto');
+});
+test('an explicit zero is not blank', () => {
+  const zero = solveLab({ momentum: 0 });
+  assert.equal(zero.ok, true);
+  assert.equal(zero.core.v, 0);
+  assert.equal(zero.values.time, Infinity);
+  assert.equal(zero.sources.momentum, 'typed');
+  const blank = solveLab({});
+  assert.equal(blank.core.v, DEFAULT_LAB_PLAN.v);
+});
+test('a typed value holds its field and solves the auto fields', () => {
+  const time = solveLab({ time: 3 });
+  assert.equal(time.ok, true);
+  assert.ok(Math.abs(time.core.v - 6.390967) < 1e-4, time.core.v);
+  assert.equal(time.core.a, DEFAULT_LAB_PLAN.a);
+  assert.equal(time.values.time, 3);
+  assert.equal(time.sources.time, 'typed');
+  assert.equal(time.sources.speed, 'auto');
+
+  const start = solveLab({ start: 0.31 });
+  assert.equal(start.ok, true);
+  assert.equal(start.core.lateral, 0.31);
+  assert.equal(start.core.v, DEFAULT_LAB_PLAN.v);
+});
+test('momentum and energy are redundant but consistent constraints', () => {
+  const both = solveLab({ momentum: 45, energy: 168.75 });
+  assert.equal(both.ok, true);
+  assert.equal(both.core.v, 7.5);
+  const bad = solveLab({ momentum: 45, energy: 20 });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.conflict, 'energy');
+});
+test('speed and time together solve deceleration', () => {
+  const out = solveLab({ speed: 7.5, time: 3 });
+  assert.equal(out.ok, true);
+  assert.equal(out.core.v, 7.5);
+  assert.ok(Math.abs(out.core.a + 0.9355556) < 1e-4, out.core.a);
+  assert.ok(Math.abs(out.values.time - 3) < 1e-6);
+});
+test('contradictory speed, time and acceleration are named', () => {
+  const out = solveLab({ speed: 7.5, time: 3, accel: -0.4 });
+  assert.equal(out.ok, false);
+  assert.equal(out.conflict, 'time');
+  assert.match(out.message, /disagrees/);
+});
+test('aim and sideways speed determine speed when speed is blank', () => {
+  const out = solveLab({ aim: 3.8225537, sideways: 0.5 });
+  assert.equal(out.ok, true);
+  assert.ok(Math.abs(out.core.v - 7.5) < 1e-4, out.core.v);
+  const bad = solveLab({ speed: 7.5, aim: -0.4, sideways: 0.5 });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.conflict, 'sideways');
+});
+test('optional parsing keeps blanks, zeros and units distinct', () => {
+  assert.deepEqual(parseOptionalValue('time', ''), { value: null, error: null });
+  assert.deepEqual(parseOptionalValue('momentum', '0'), { value: 0, error: null });
+  assert.equal(parseOptionalValue('speed', '27km/h').value, 7.5);
+  assert.equal(parseOptionalValue('start', '1830cm').value, 18.3);
+  assert.equal(parseOptionalValue('aim', '0.0667rad').value.toFixed(2), '3.82');
+  assert.ok(parseOptionalValue('speed', '27 bananas').error);
+});
+test('findField explains a missing time, speed, momentum and energy', () => {
+  const time = findField({ speed: 7.5 }, 'time');
+  assert.equal(time.ok, true);
+  assert.ok(Math.abs(time.value - 2.52185) < 1e-4, time.value);
+  assert.match(time.formula, /t =/);
+  assert.ok(time.substitution.includes('18.29'));
+
+  const speed = findField({ time: 3 }, 'speed');
+  assert.equal(speed.ok, true);
+  assert.ok(Math.abs(speed.value - 6.390967) < 1e-3, speed.value);
+
+  const momentum = findField({ speed: 7.5 }, 'momentum');
+  assert.equal(momentum.value, 45);
+  const energy = findField({ speed: 7.5 }, 'energy');
+  assert.equal(energy.value, 168.75);
+  const accel = findField({ speed: 7.5, time: 3 }, 'accel');
+  assert.ok(Math.abs(accel.value + 0.9355556) < 1e-4);
+  const sideways = findField({ speed: 7.5, aim: -0.4 }, 'sideways');
+  assert.ok(Math.abs(sideways.value + 0.052359) < 1e-5);
+});
+test('findField refuses direct-only fields and stop-short times', () => {
+  const direct = findField({}, 'start');
+  assert.equal(direct.ok, false);
+  const never = findField({ momentum: 5 }, 'time');
+  assert.equal(never.ok, false);
+  assert.match(never.message, /never reaches/);
+});
+test('findField verifies an already-given value', () => {
+  const out = findField({ speed: 7.5 }, 'speed');
+  assert.equal(out.ok, true);
+  assert.equal(out.alreadyGiven, true);
+  assert.equal(out.value, 7.5);
+  const consistent = findField({ speed: 7.5, time: 3 }, 'speed');
+  assert.equal(consistent.ok, true);
+  assert.equal(consistent.alreadyGiven, true);
+  assert.equal(consistent.value, 7.5);
+});
+
+// ---------------------------------------------------------------------------
+section('inverse physics equations');
+const EQUATION_SAMPLES = {
+  uniform_motion: { d: 18.3, v: 7.5, t: 18.3 / 7.5 },
+  velocity_time: { u: 2, v: 10, a: 2, t: 4 },
+  displacement_time: { d: 18.29, u: 7.5, a: -0.1962, t: 2.521852035647966 },
+  velocity_displacement: { u: 2, v: 10, a: 2, d: 24 },
+  force: { F: 12, m: 4, a: 3 },
+  work: { W: 12, F: 4, d: 3 },
+  kinetic_energy: { K: 168.75, m: 6, v: 7.5 },
+  torque: { tau: 12, F: 4, r: 3 },
+  angular_velocity: { v: 12, omega: 4, r: 3 },
+  friction_deceleration: { a: 0.1962, mu: 0.02, g: 9.81 },
+  stopping_distance: {
+    d: 56.25 / (2 * 0.02 * 9.81), v: 7.5, mu: 0.02, g: 9.81,
+  },
+  stopping_time: {
+    t: 7.5 / (0.02 * 9.81), v: 7.5, mu: 0.02, g: 9.81,
+  },
+  sideways_velocity: {
+    vx: 0.5, v: 7.5, theta: Math.asin(0.5 / 7.5) * 180 / Math.PI,
+  },
+};
+test('every supported equation solves in every direction', () => {
+  for (const equation of EQUATIONS) {
+    const sample = EQUATION_SAMPLES[equation.id];
+    assert.ok(sample, equation.id);
+    for (const find of equation.variables) {
+      const given = {};
+      for (const symbol of equation.variables) {
+        if (symbol !== find) given[symbol] = sample[symbol];
+      }
+      const result = solveEquation({ equationId: equation.id, find, given });
+      assert.equal(result.ok, true, `${equation.id}: find ${find}: ${result.message}`);
+      assert.ok(Number.isFinite(result.value), `${equation.id}.${find}`);
+      assert.ok(Math.abs(result.value - sample[find]) <= 1e-3 * Math.max(1, Math.abs(sample[find])),
+        `${equation.id}.${find} -> ${result.value}, expected ${sample[find]}`);
+      assert.ok(result.formula && result.rearranged && result.substitution);
+      assert.ok(result.answer.startsWith(`${find} =`));
+    }
+  }
+});
+test('the user-facing distance / speed / find time example is exact', () => {
+  const out = solveEquation({
+    equationId: 'uniform_motion', find: 't', given: { d: 18.3, v: 7.5 },
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.rearranged, 't = d / v');
+  assert.equal(out.substitution, 't = 18.3 / 7.5');
+  assert.equal(out.answer, 't = 2.44 s');
+});
+test('missing information is named and never invented', () => {
+  const out = solveEquation({
+    equationId: 'force', find: 'a', given: { F: 12 },
+  });
+  assert.equal(out.ok, false);
+  assert.deepEqual(out.missing, ['m']);
+  assert.match(out.message, /Mass \(m\) is required/);
+});
+test('a fallback equation is used when it can solve with the same givens', () => {
+  const out = solveEquation({
+    equationId: 'stopping_time', find: 't', given: { d: 18.3, v: 7.5 },
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.equationId, 'uniform_motion');
+  assert.equal(out.requestedEquationId, 'stopping_time');
+  assert.match(out.note, /Used Uniform motion/);
+});
+test('apply hints are conservative about the lane', () => {
+  const speed = solveEquation({
+    equationId: 'kinetic_energy', find: 'v', given: { K: 168.75, m: 6 },
+  });
+  assert.equal(speed.apply.speed, 7.5);
+  const aim = solveEquation({
+    equationId: 'sideways_velocity', find: 'theta', given: { vx: 0.5, v: 7.5 },
+  });
+  assert.ok(Math.abs(aim.apply.aim - 3.82255) < 1e-3);
+  const decel = solveEquation({
+    equationId: 'displacement_time', find: 'a', given: { d: 18.29, u: 7.5, t: 3 },
+  });
+  assert.ok(Math.abs(decel.apply.deceleration + 0.9355556) < 1e-5);
+  const positive = solveEquation({
+    equationId: 'velocity_time', find: 'a', given: { u: 2, v: 10, t: 4 },
+  });
+  assert.ok(positive.apply.unsupported, 'positive acceleration is not a lane parameter');
+  const analytical = solveEquation({
+    equationId: 'uniform_motion', find: 't', given: { d: 18.3, v: 7.5 },
+  });
+  assert.deepEqual(analytical.apply, {});
+});
+test('the analytical time agrees with the lab plan when the model matches', () => {
+  for (const a of [0, -0.1962, -0.5]) {
+    const plan = headPinTime(7.5, a);
+    const equation = solveEquation({
+      equationId: 'displacement_time', find: 't',
+      given: { d: 18.29, u: 7.5, a },
+    });
+    assert.equal(equation.ok, true);
+    assert.ok(Math.abs(equation.value - plan) < 1e-3,
+      `a=${a}: ${equation.value} vs ${plan}`);
+  }
+});
+test('undefined divisions and impossible travel are reported', () => {
+  const zeroSpeed = solveEquation({
+    equationId: 'uniform_motion', find: 't', given: { d: 18.3, v: 0 },
+  });
+  assert.equal(zeroSpeed.ok, false);
+  const stopsShort = solveEquation({
+    equationId: 'displacement_time', find: 't',
+    given: { d: 40, u: 2, a: -1 },
+  });
+  assert.equal(stopsShort.ok, false);
+  assert.match(stopsShort.message, /never reaches|No positive/);
+});
+test('physically invalid negatives are rejected', () => {
+  const mass = solveEquation({ equationId: 'force', find: 'a', given: { F: 12, m: -4 } });
+  assert.equal(mass.ok, false);
+  assert.match(mass.message, /cannot be negative|greater than zero/);
+  const friction = solveEquation({
+    equationId: 'friction_deceleration', find: 'mu', given: { a: -0.2, g: 9.81 },
+  });
+  assert.equal(friction.ok, false);
+  const energy = solveEquation({
+    equationId: 'kinetic_energy', find: 'v', given: { K: -1, m: 6 },
+  });
+  assert.equal(energy.ok, false);
+  const radius = solveEquation({
+    equationId: 'torque', find: 'r', given: { tau: -1, F: 1 },
+  });
+  assert.equal(radius.ok, false);
 });
 
 // ---------------------------------------------------------------------------

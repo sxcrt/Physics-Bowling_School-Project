@@ -1252,6 +1252,23 @@ def _icon(draw, name, size):
         draw.line([(26 * unit, 50 * unit), (42 * unit, 66 * unit),
                    (70 * unit, 32 * unit)], fill=white,
                   width=line_width(12), joint='curve')
+    elif name in ('lock', 'unlock'):
+        if name == 'lock':
+            draw.arc(box(30, 14, 66, 50), start=180, end=360,
+                     fill=white, width=line_width(9))
+            draw.line([(30 * unit, 32 * unit), (30 * unit, 46 * unit)],
+                      fill=white, width=line_width(9))
+            draw.line([(66 * unit, 32 * unit), (66 * unit, 46 * unit)],
+                      fill=white, width=line_width(9))
+        else:
+            draw.arc(box(30, 14, 66, 50), start=180, end=300,
+                     fill=white, width=line_width(9))
+            draw.line([(30 * unit, 32 * unit), (30 * unit, 46 * unit)],
+                      fill=white, width=line_width(9))
+        draw.rounded_rectangle(box(20, 44, 76, 88), radius=9 * unit,
+                               fill=white)
+        draw.rounded_rectangle(box(44, 56, 52, 76), radius=4 * unit,
+                               fill=clear)
     elif name in ('arrow_left', 'arrow_right', 'arrow_up', 'arrow_down'):
         if name == 'arrow_left':
             draw.polygon([(58 * unit, 16 * unit), (24 * unit, 48 * unit),

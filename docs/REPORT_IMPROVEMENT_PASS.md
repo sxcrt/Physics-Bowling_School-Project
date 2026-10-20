@@ -486,7 +486,7 @@ until a frame scores, which is how the real card works.
 | --- | --- |
 | Low | Webcam aim/hook/release direction are heuristics from tracked hand motion, and real-hardware swing timing has still not been verified end to end (nobody has stood in front of the camera for this pass). The safeguards and the mapping are tested with synthetic landmark streams. |
 | Low | The lane has no oil pattern, no spin-axis migration and no air drag; the hook is produced by the release slip only. Documented in `docs/PHYSICS.md` 1.3/1.4 with the measured drift table. |
-| Resolved | The Physics Lab steppers now accept typed values: click a number, type an exact speed/start/aim/hook, press Enter (Escape cancels). Speed still floors at zero and the arrows continue to step. |
+| Resolved | The browser Physics Lab uses one optional VALUES panel: any field can be blank (auto), explicit zero is real, typed values solve together and conflicts are named; the SOLVER window finds one missing variable and applies it without launching. The desktop lab keeps its lock-based calculator and equation solver. |
 | Low | The trivia bank is unchanged (concept questions) and does not use the progressive-hint panel - a wrong answer still forfeits the throw and shows the explanation for a few seconds. |
 | Cosmetic | The character's hands/ears are simplified, and the menu character is hidden on the Physics Lab screen. |
 | Cosmetic | On a window whose pointer never reports "in window", clicks rely on the OS-cursor fallback; on a non-Windows platform that fallback does not exist, so the game would need Panda3D's pointer to work (the keyboard path always works). |

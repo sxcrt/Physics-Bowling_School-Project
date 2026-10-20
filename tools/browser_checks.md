@@ -156,7 +156,7 @@ async function browserAudit() {
 | Local 2-4 players: rotation, handoff banner, ENTER and click confirm | state + DOM |
 | BowlRush: countdown ticks only while eligible, in-flight roll finishes after time-out | state |
 | Pause / resume / restart / settings-from-pause / quit-to-menu | DOM + keyboard |
-| Physics Lab: BOWL, PAUSE, RESET, scrubbing, equation rows, load last throw, typed launch values, back | DOM + state |
+| Physics Lab: BOWL, PAUSE, RESET, scrubbing, unified optional VALUES panel (blank/auto, explicit zero, conflicts), missing-variable solver, apply to values, LIVE read-only, back | DOM + state |
 | Mouse input: aim (frozen during drag), A/D lateral, drag→speed/yaw/hook, gates | real pointer events |
 | Keyboard: R (rack), H (physics readout), P/ESC (pause), TAB/1/2 (input), C (arm), F12 (screenshot) | key events |
 | Webcam fallback (no camera): reports unavailable and switches to mouse | state + message |
